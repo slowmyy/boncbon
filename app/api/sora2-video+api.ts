@@ -1,5 +1,5 @@
 export async function POST(request: Request) {
-  console.log('🎬 [SORA2] API Route appelée pour Sora-2 Normal');
+  console.log('🎬 [SORA2] API Route appelée pour Sora-2');
 
   try {
     const body = await request.json();
@@ -9,9 +9,7 @@ export async function POST(request: Request) {
       hasApiKey: !!apiKey,
       apiKeyLength: apiKey?.length || 0,
       bodyReceived: !!body,
-      model: 'sora2-normal',
-      duration: body?.duration || 5,
-      aspectRatio: body?.aspect_ratio || '16:9',
+      model: 'sora-2',
       prompt: body?.prompt?.substring(0, 50) + '...'
     });
 
@@ -27,33 +25,28 @@ export async function POST(request: Request) {
     }
 
     const prompt = body?.prompt || '';
-    const duration = body?.duration || 5;
-    const aspectRatio = body?.aspect_ratio || '16:9';
 
-    const dimensions = getDimensions(aspectRatio);
+    console.log('📡 [SORA2] Envoi vers CometAPI Chat Completions...');
 
-    console.log('📡 [SORA2] Création de la tâche via CometAPI...');
-
-    const payload = {
-      prompt: prompt,
-      model: "sora2-normal",
-      duration: duration,
-      enhance_prompt: true,
-      width: dimensions.width,
-      height: dimensions.height,
-      aspect_ratio: aspectRatio
-    };
-
-    const response = await fetch('https://api.cometapi.com/sora/v1/video/create', {
+    const response = await fetch('https://api.cometapi.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        model: 'sora-2',
+        stream: true,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ]
+      })
     });
 
-    console.log('📥 [SORA2] Réponse création tâche:', {
+    console.log('📥 [SORA2] Réponse reçue:', {
       status: response.status,
       statusText: response.statusText,
       ok: response.ok
@@ -61,11 +54,11 @@ export async function POST(request: Request) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('❌ [SORA2] Erreur création tâche:', errorText);
+      console.error('❌ [SORA2] Erreur:', errorText);
 
       return new Response(
         JSON.stringify({
-          error: `Sora-2 task creation error: ${response.status}`,
+          error: `Sora-2 error: ${response.status}`,
           details: errorText
         }),
         {
@@ -76,30 +69,52 @@ export async function POST(request: Request) {
     }
 
     const data = await response.json();
-    const taskId = data.id;
+    console.log('📊 [SORA2] Données reçues:', {
+      hasChoices: !!data.choices,
+      hasLinks: !!data.links,
+      id: data.id
+    });
 
-    if (!taskId) {
-      console.error('❌ [SORA2] Aucun ID de tâche dans la réponse');
+    let videoUrl: string | null = null;
+
+    if (data.choices?.[0]?.message?.content) {
+      const content = data.choices[0].message.content;
+      console.log('📝 [SORA2] Contenu message:', content.substring(0, 100));
+
+      const mp4Match = content.match(/https?:\/\/[^\s"]+\.mp4/);
+      if (mp4Match) {
+        videoUrl = mp4Match[0];
+        console.log('✅ [SORA2] URL vidéo trouvée directement:', videoUrl);
+
+        return new Response(
+          JSON.stringify({ videoUrl, taskId: data.id || 'unknown' }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
+    }
+
+    if (data.links?.source) {
+      console.log('🔗 [SORA2] Polling via links.source:', data.links.source);
+      videoUrl = await pollSora2Result(data.links.source, apiKey);
+
+      console.log('✅ [SORA2] Vidéo prête:', videoUrl);
       return new Response(
-        JSON.stringify({ error: 'Aucun ID de tâche retourné par CometAPI' }),
+        JSON.stringify({ videoUrl, taskId: data.id || 'unknown' }),
         {
-          status: 500,
+          status: 200,
           headers: { 'Content-Type': 'application/json' }
         }
       );
     }
 
-    console.log('✅ [SORA2] Tâche créée, ID:', taskId);
-
-    console.log('⏳ [SORA2] Début du polling...');
-
-    const videoUrl = await pollSora2Result(taskId, apiKey);
-
-    console.log('✅ [SORA2] Vidéo prête:', videoUrl);
+    console.error('❌ [SORA2] Aucune URL trouvée dans la réponse');
     return new Response(
-      JSON.stringify({ videoUrl, taskId }),
+      JSON.stringify({ error: 'Aucune URL de vidéo trouvée' }),
       {
-        status: 200,
+        status: 500,
         headers: { 'Content-Type': 'application/json' }
       }
     );
@@ -120,11 +135,9 @@ export async function POST(request: Request) {
   }
 }
 
-async function pollSora2Result(taskId: string, apiKey: string): Promise<string> {
-  const statusUrl = `https://asyncdata.net/source/${taskId}`;
-
+async function pollSora2Result(statusUrl: string, apiKey: string): Promise<string> {
   let attempts = 0;
-  const maxAttempts = 180;
+  const maxAttempts = 120;
 
   while (attempts < maxAttempts) {
     attempts++;
@@ -146,7 +159,7 @@ async function pollSora2Result(taskId: string, apiKey: string): Promise<string> 
       const text = await res.text();
       console.log(`📊 [SORA2] Response text length: ${text.length}`);
 
-      const match = text.match(/https?:\/\/[^\s"]+\.mp4/);
+      const match = text.match(/https?:\/\/[^\s\]"]+\.mp4/i);
       if (match) {
         console.log("🎥 [SORA2] Vidéo prête:", match[0]);
         return match[0];
@@ -161,19 +174,6 @@ async function pollSora2Result(taskId: string, apiKey: string): Promise<string> 
     await new Promise(r => setTimeout(r, 5000));
   }
 
-  console.error('❌ [SORA2] Timeout après 15 minutes');
-  throw new Error('Timeout: vidéo non générée après 15 minutes');
-}
-
-function getDimensions(aspectRatio: string): { width: number; height: number } {
-  switch (aspectRatio) {
-    case '16:9':
-      return { width: 1920, height: 1080 };
-    case '9:16':
-      return { width: 1080, height: 1920 };
-    case '1:1':
-      return { width: 1080, height: 1080 };
-    default:
-      return { width: 1920, height: 1080 };
-  }
+  console.error('❌ [SORA2] Timeout après 10 minutes');
+  throw new Error('Timeout: vidéo non générée après 10 minutes');
 }
