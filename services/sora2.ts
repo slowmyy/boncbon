@@ -79,29 +79,35 @@ export class Sora2Service {
       }
 
       console.log('📊 [SORA2 SERVICE] Données reçues:', {
+        topLevelKeys: Object.keys(data),
         hasVideoUrl: !!data.videoUrl,
-        hasTaskId: !!data.taskId,
-        source: data.source,
-        videoUrlPreview: data.videoUrl?.substring(0, 100) + '...' || 'null',
-        allKeys: Object.keys(data)
+        hasVideoURL: !!data.videoURL,
+        hasUrl: !!data.url
       });
 
-      if (!data.videoUrl || typeof data.videoUrl !== 'string') {
-        console.error('❌ [SORA2 SERVICE] videoUrl manquant ou invalide:', data);
-        throw new Error('URL de vidéo non retournée par Sora-2');
+      let finalVideoUrl: string | null = null;
+
+      if (data.videoUrl && typeof data.videoUrl === 'string') {
+        finalVideoUrl = data.videoUrl;
+      } else if (data.videoURL && typeof data.videoURL === 'string') {
+        finalVideoUrl = data.videoURL;
+      } else if (data.url && typeof data.url === 'string') {
+        finalVideoUrl = data.url;
+      } else if (data.video_url && typeof data.video_url === 'string') {
+        finalVideoUrl = data.video_url;
       }
 
-      if (!data.videoUrl.startsWith('http')) {
-        console.error('❌ [SORA2 SERVICE] URL vidéo malformée:', data.videoUrl);
-        throw new Error('URL de vidéo invalide');
+      if (!finalVideoUrl || !finalVideoUrl.startsWith('http')) {
+        console.error('❌ [SORA2 SERVICE] Aucune URL valide:', JSON.stringify(data, null, 2));
+        throw new Error('URL de vidéo manquante ou invalide');
       }
+
+      console.log('✅ [SORA2 SERVICE] URL extraite:', finalVideoUrl);
 
       if (onProgress) onProgress(100);
 
-      console.log('✅ [SORA2 SERVICE] Vidéo générée avec succès:', data.videoUrl);
-
       const result: Sora2VideoResponse = {
-        videoUrl: data.videoUrl,
+        videoUrl: finalVideoUrl,
         taskId: data.taskId || 'unknown',
         duration: params.duration || 5,
         source: data.source
@@ -130,13 +136,13 @@ export class Sora2Service {
   getDimensions(aspectRatio: string): { width: number; height: number } {
     switch (aspectRatio) {
       case '16:9':
-        return { width: 1920, height: 1080 };
+        return { width: 1280, height: 720 };
       case '9:16':
-        return { width: 1080, height: 1920 };
+        return { width: 720, height: 1280 };
       case '1:1':
-        return { width: 1080, height: 1080 };
+        return { width: 1024, height: 1024 };
       default:
-        return { width: 1920, height: 1080 };
+        return { width: 1280, height: 720 };
     }
   }
 }
