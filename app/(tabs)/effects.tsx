@@ -34,8 +34,7 @@ import { storageService } from '@/services/storage';
 import {
   pixverseService,
   PIXVERSE_EFFECTS,
-  PIXVERSE_STYLES,
-  PIXVERSE_RESOLUTIONS
+  PIXVERSE_STYLES
 } from '@/services/pixverse';
 import ProfileHeader from '@/components/ProfileHeader';
 
@@ -145,8 +144,6 @@ export default function Effects() {
   const [activeTab, setActiveTab] = useState<'image' | 'video'>('image');
 
   const [selectedStyle, setSelectedStyle] = useState(PIXVERSE_STYLES[0]);
-  const [selectedResolution, setSelectedResolution] = useState(PIXVERSE_RESOLUTIONS[2]);
-  const [videoDuration, setVideoDuration] = useState<5 | 8>(5);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -279,10 +276,6 @@ export default function Effects() {
             effect: selectedEffect.pixverseEffectId,
             style: selectedStyle.id !== 'none' ? selectedStyle.id : undefined,
             referenceImage: referenceImage,
-            width: selectedResolution.width,
-            height: selectedResolution.height,
-            duration: videoDuration,
-            fps: 16,
             outputFormat: 'MP4',
             motionMode: 'normal'
           },
@@ -307,7 +300,7 @@ export default function Effects() {
           format: selectedEffect.title,
           style: selectedStyle.name,
           isVideo: true,
-          duration: videoResult.duration,
+          duration: 5,
           dimensions: videoResult.resolution
         });
       }
@@ -469,7 +462,7 @@ export default function Effects() {
           {isVideo && (
             <>
               <View style={styles.pixverseSection}>
-                <Text style={styles.sectionTitle}>Style PixVerse</Text>
+                <Text style={styles.sectionTitle}>Style vidéo</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   <View style={styles.stylesRow}>
                     {PIXVERSE_STYLES.map((style) => (
@@ -489,49 +482,13 @@ export default function Effects() {
                 </ScrollView>
               </View>
 
-              <View style={styles.pixverseSection}>
-                <Text style={styles.sectionTitle}>Résolution</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={styles.stylesRow}>
-                    {PIXVERSE_RESOLUTIONS.map((res) => (
-                      <TouchableOpacity
-                        key={res.id}
-                        style={[
-                          styles.resolutionButton,
-                          selectedResolution.id === res.id && styles.resolutionButtonActive
-                        ]}
-                        onPress={() => setSelectedResolution(res)}
-                      >
-                        <Text style={styles.resolutionEmoji}>{res.emoji}</Text>
-                        <Text style={styles.resolutionText}>{res.name}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </ScrollView>
-              </View>
-
-              <View style={styles.pixverseSection}>
-                <Text style={styles.sectionTitle}>Durée</Text>
-                <View style={styles.durationRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.durationButton,
-                      videoDuration === 5 && styles.durationButtonActive
-                    ]}
-                    onPress={() => setVideoDuration(5)}
-                  >
-                    <Text style={styles.durationText}>5 secondes</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.durationButton,
-                      videoDuration === 8 && styles.durationButtonActive
-                    ]}
-                    onPress={() => setVideoDuration(8)}
-                  >
-                    <Text style={styles.durationText}>8 secondes</Text>
-                  </TouchableOpacity>
-                </View>
+              <View style={styles.infoBox}>
+                <Text style={styles.infoText}>
+                  📐 Résolution : 720p (format automatique selon l'image)
+                </Text>
+                <Text style={styles.infoText}>
+                  ⏱️ Durée : 5 secondes
+                </Text>
               </View>
             </>
           )}
@@ -836,49 +793,19 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#666666',
   },
-  resolutionButton: {
-    alignItems: 'center',
-    backgroundColor: '#F8F8F8',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 2,
-    borderColor: '#E5E5EA',
-    minWidth: 100,
-  },
-  resolutionButtonActive: {
-    backgroundColor: '#FFF5F0',
-    borderColor: '#FF6B35',
-  },
-  resolutionEmoji: {
-    fontSize: 20,
-    marginBottom: 4,
-  },
-  resolutionText: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: '#666666',
-  },
-  durationRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  durationButton: {
-    flex: 1,
-    backgroundColor: '#F8F8F8',
+  infoBox: {
+    backgroundColor: '#F0F9FF',
     borderRadius: 12,
     padding: 16,
-    borderWidth: 2,
-    borderColor: '#E5E5EA',
-    alignItems: 'center',
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    gap: 8,
   },
-  durationButtonActive: {
-    backgroundColor: '#FFF5F0',
-    borderColor: '#FF6B35',
-  },
-  durationText: {
+  infoText: {
     fontSize: 14,
+    color: '#1E40AF',
     fontWeight: '500',
-    color: '#666666',
   },
   generateButton: {
     borderRadius: 16,

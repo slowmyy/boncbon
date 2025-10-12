@@ -33,8 +33,7 @@ export interface PixVerseVideoRequest {
   referenceImage?: string;
   width?: number;
   height?: number;
-  duration?: 5 | 8;
-  fps?: 16 | 24;
+  duration?: 5;
   outputFormat?: 'MP4' | 'WEBM';
 }
 
@@ -219,12 +218,9 @@ export const PIXVERSE_STYLES: PixVerseStyle[] = [
 ];
 
 export const PIXVERSE_RESOLUTIONS: PixVerseResolution[] = [
-  { id: '360p_16_9', name: '360p (16:9)', width: 640, height: 360, emoji: '📱' },
-  { id: '540p_16_9', name: '540p (16:9)', width: 960, height: 540, emoji: '📺' },
-  { id: '720p_16_9', name: '720p HD (16:9)', width: 1280, height: 720, emoji: '🖥️' },
-  { id: '1080p_16_9', name: '1080p Full HD (16:9)', width: 1920, height: 1080, emoji: '🎥' },
+  { id: '720p_16_9', name: '720p Paysage (16:9)', width: 1280, height: 720, emoji: '🖥️' },
   { id: '720p_1_1', name: '720p Carré (1:1)', width: 720, height: 720, emoji: '⬜' },
-  { id: '1080p_9_16', name: '1080p Portrait (9:16)', width: 1080, height: 1920, emoji: '📲' }
+  { id: '720p_9_16', name: '720p Portrait (9:16)', width: 720, height: 1280, emoji: '📲' }
 ];
 
 export class PixVerseService {
@@ -241,6 +237,29 @@ export class PixVerseService {
       const r = Math.random() * 16 | 0;
       const v = c === 'x' ? r : (r & 0x3 | 0x8);
       return v.toString(16);
+    });
+  }
+
+  async detectImageFormat(imageUri: string): Promise<{ width: number; height: number }> {
+    return new Promise((resolve, reject) => {
+      if (typeof Image !== 'undefined') {
+        const img = new Image();
+        img.onload = () => {
+          const ratio = img.width / img.height;
+
+          if (ratio > 1.5) {
+            resolve({ width: 1280, height: 720 });
+          } else if (ratio < 0.7) {
+            resolve({ width: 720, height: 1280 });
+          } else {
+            resolve({ width: 720, height: 720 });
+          }
+        };
+        img.onerror = () => resolve({ width: 1280, height: 720 });
+        img.src = imageUri;
+      } else {
+        resolve({ width: 1280, height: 720 });
+      }
     });
   }
 
@@ -303,15 +322,20 @@ export class PixVerseService {
     console.log('🎬 [PIXVERSE] Début génération:', {
       effect: params.effect,
       style: params.style,
-      hasReferenceImage: !!params.referenceImage,
-      duration: params.duration || 5
+      hasReferenceImage: !!params.referenceImage
     });
 
     try {
       if (onProgress) onProgress(10);
 
       let frameImages: string[] | undefined;
+      let dimensions = { width: 1280, height: 720 };
+
       if (params.referenceImage) {
+        console.log('📤 [PIXVERSE] Détection format image...');
+        dimensions = await this.detectImageFormat(params.referenceImage);
+        console.log('📐 [PIXVERSE] Format détecté:', dimensions);
+
         console.log('📤 [PIXVERSE] Upload image de référence...');
         if (onProgress) onProgress(20);
         const imageURL = await this.uploadImage(params.referenceImage);
@@ -325,11 +349,10 @@ export class PixVerseService {
         taskUUID: this.generateUUID(),
         model: 'pixverse:1@5',
         positivePrompt: params.prompt,
-        width: params.width || 1280,
-        height: params.height || 720,
-        duration: params.duration || 5,
-        fps: params.fps || 16,
-        outputFormat: params.outputFormat || 'MP4',
+        width: dimensions.width,
+        height: dimensions.height,
+        duration: 5,
+        outputFormat: 'MP4',
         deliveryMethod: 'async',
         outputType: 'URL',
         includeCost: true
