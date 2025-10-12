@@ -122,7 +122,7 @@ const IMAGE_EFFECTS: Effect[] = [
   }
 ];
 
-const PIXVERSE_VIDEO_EFFECTS: Effect[] = PIXVERSE_EFFECTS.slice(0, 12).map(effect => ({
+const PIXVERSE_VIDEO_EFFECTS: Effect[] = PIXVERSE_EFFECTS.map(effect => ({
   id: `pixverse_${effect.id}`,
   title: effect.name,
   description: effect.description,

@@ -47,7 +47,7 @@ export interface PixVerseVideoResponse {
 
 export const PIXVERSE_EFFECTS: PixVerseEffect[] = [
   {
-    id: 'muscle_surge',
+    id: 'muscle surge',
     name: 'Muscle Surge',
     description: 'Transformation musculaire spectaculaire',
     emoji: '💪',
@@ -56,7 +56,7 @@ export const PIXVERSE_EFFECTS: PixVerseEffect[] = [
     maxImages: 1
   },
   {
-    id: 'bikini_up',
+    id: 'bikini up',
     name: 'Bikini Up',
     description: 'Transformation en tenue de plage',
     emoji: '👙',
@@ -65,25 +65,7 @@ export const PIXVERSE_EFFECTS: PixVerseEffect[] = [
     maxImages: 1
   },
   {
-    id: 'huge_cutie',
-    name: 'Huge Cutie',
-    description: 'Version adorable géante',
-    emoji: '🧸',
-    category: 'transformation',
-    requiresImage: true,
-    maxImages: 1
-  },
-  {
-    id: 'baby_face',
-    name: 'Baby Face',
-    description: 'Transformation en bébé',
-    emoji: '👶',
-    category: 'transformation',
-    requiresImage: true,
-    maxImages: 1
-  },
-  {
-    id: 'kiss_me_ai',
+    id: 'kiss me ai',
     name: 'Kiss Me AI',
     description: 'Effet romantique avec IA',
     emoji: '💋',
@@ -92,86 +74,7 @@ export const PIXVERSE_EFFECTS: PixVerseEffect[] = [
     maxImages: 2
   },
   {
-    id: 'warmth_of_jesus',
-    name: 'Warmth of Jesus',
-    description: 'Ambiance spirituelle chaleureuse',
-    emoji: '✨',
-    category: 'thematic',
-    requiresImage: false
-  },
-  {
-    id: 'holy_wings',
-    name: 'Holy Wings',
-    description: 'Ailes angéliques divines',
-    emoji: '👼',
-    category: 'thematic',
-    requiresImage: true,
-    maxImages: 1
-  },
-  {
-    id: 'thunder_god',
-    name: 'Thunder God',
-    description: 'Transformation en dieu du tonnerre',
-    emoji: '⚡',
-    category: 'thematic',
-    requiresImage: true,
-    maxImages: 1
-  },
-  {
-    id: 'black_myth_wukong',
-    name: 'Black Myth: Wukong',
-    description: 'Style du Roi Singe légendaire',
-    emoji: '🐵',
-    category: 'thematic',
-    requiresImage: true,
-    maxImages: 1
-  },
-  {
-    id: 'liquid_metal',
-    name: 'Liquid Metal',
-    description: 'Transformation métal liquide',
-    emoji: '🌊',
-    category: 'creative',
-    requiresImage: true,
-    maxImages: 1
-  },
-  {
-    id: '3d_figurine_factor',
-    name: '3D Figurine',
-    description: 'Conversion en figurine 3D',
-    emoji: '🎭',
-    category: 'creative',
-    requiresImage: true,
-    maxImages: 1
-  },
-  {
-    id: 'earth_zoom_challenge',
-    name: 'Earth Zoom',
-    description: 'Zoom spectaculaire depuis l\'espace',
-    emoji: '🌍',
-    category: 'creative',
-    requiresImage: false
-  },
-  {
-    id: 'venom',
-    name: 'Venom',
-    description: 'Transformation en symbiote',
-    emoji: '🕷️',
-    category: 'creative',
-    requiresImage: true,
-    maxImages: 1
-  },
-  {
-    id: 'zombie_mode',
-    name: 'Zombie Mode',
-    description: 'Transformation zombie horrifique',
-    emoji: '🧟',
-    category: 'creative',
-    requiresImage: true,
-    maxImages: 1
-  },
-  {
-    id: 'jiggle_jiggle',
+    id: 'jiggle jiggle',
     name: 'Jiggle Jiggle',
     description: 'Animation dansante rebondissante',
     emoji: '🎵',
@@ -180,17 +83,8 @@ export const PIXVERSE_EFFECTS: PixVerseEffect[] = [
     maxImages: 1
   },
   {
-    id: 'ai_dance',
-    name: 'AI Dance',
-    description: 'Danse générée par IA',
-    emoji: '💃',
-    category: 'animation',
-    requiresImage: true,
-    maxImages: 1
-  },
-  {
-    id: 'vroom_dance',
-    name: 'Vroom Dance',
+    id: 'vroom vroom step',
+    name: 'Vroom Vroom Step',
     description: 'Danse énergique style voiture',
     emoji: '🏎️',
     category: 'animation',
@@ -198,11 +92,137 @@ export const PIXVERSE_EFFECTS: PixVerseEffect[] = [
     maxImages: 1
   },
   {
-    id: 'pole_dance',
-    name: 'Pole Dance',
-    description: 'Danse acrobatique',
-    emoji: '🎪',
+    id: 'lets ymca',
+    name: 'Lets YMCA',
+    description: 'Danse YMCA iconique',
+    emoji: '🕺',
     category: 'animation',
+    requiresImage: true,
+    maxImages: 1
+  },
+  {
+    id: 'balloon belly',
+    name: 'Balloon Belly',
+    description: 'Ventre qui gonfle comme un ballon',
+    emoji: '🎈',
+    category: 'transformation',
+    requiresImage: true,
+    maxImages: 1
+  },
+  {
+    id: 'skeleton dance',
+    name: 'Skeleton Dance',
+    description: 'Transformation en squelette dansant',
+    emoji: '💀',
+    category: 'animation',
+    requiresImage: true,
+    maxImages: 1
+  },
+  {
+    id: 'kungfu club',
+    name: 'Kungfu Club',
+    description: 'Mouvements de kung-fu',
+    emoji: '🥋',
+    category: 'animation',
+    requiresImage: true,
+    maxImages: 1
+  },
+  {
+    id: 'boom drop',
+    name: 'Boom Drop',
+    description: 'Chute spectaculaire',
+    emoji: '💥',
+    category: 'animation',
+    requiresImage: true,
+    maxImages: 1
+  },
+  {
+    id: 'creepy devil smile',
+    name: 'Creepy Devil Smile',
+    description: 'Sourire démoniaque effrayant',
+    emoji: '😈',
+    category: 'creative',
+    requiresImage: true,
+    maxImages: 1
+  },
+  {
+    id: 'hug your love',
+    name: 'Hug Your Love',
+    description: 'Câlin romantique',
+    emoji: '🤗',
+    category: 'thematic',
+    requiresImage: true,
+    maxImages: 2
+  },
+  {
+    id: 'pubg winner hit',
+    name: 'PUBG Winner Hit',
+    description: 'Victoire style PUBG',
+    emoji: '🏆',
+    category: 'animation',
+    requiresImage: true,
+    maxImages: 1
+  },
+  {
+    id: '360 microwave',
+    name: '360 Microwave',
+    description: 'Rotation à 360 degrés',
+    emoji: '🔄',
+    category: 'animation',
+    requiresImage: true,
+    maxImages: 1
+  },
+  {
+    id: 'eye zoom challenge',
+    name: 'Eye Zoom Challenge',
+    description: 'Zoom sur les yeux',
+    emoji: '👁️',
+    category: 'creative',
+    requiresImage: true,
+    maxImages: 1
+  },
+  {
+    id: 'kiss kiss',
+    name: 'Kiss Kiss',
+    description: 'Bisous envoyés',
+    emoji: '😘',
+    category: 'thematic',
+    requiresImage: true,
+    maxImages: 1
+  },
+  {
+    id: 'fin-tastic mermaid',
+    name: 'Fin-tastic Mermaid',
+    description: 'Transformation en sirène',
+    emoji: '🧜',
+    category: 'transformation',
+    requiresImage: true,
+    maxImages: 1
+  },
+  {
+    id: 'punch face',
+    name: 'Punch Face',
+    description: 'Coup de poing visage',
+    emoji: '👊',
+    category: 'animation',
+    requiresImage: true,
+    maxImages: 1
+  },
+  {
+    id: 'the tigers touch',
+    name: 'The Tigers Touch',
+    description: 'Touche du tigre',
+    emoji: '🐯',
+    category: 'thematic',
+    requiresImage: true,
+    maxImages: 1
+  },
+  {
+    id: 'subject 3 fever',
+    name: 'Subject 3 Fever',
+    description: 'Fièvre sujet 3',
+    emoji: '🌡️',
+    category: 'creative',
     requiresImage: true,
     maxImages: 1
   }
