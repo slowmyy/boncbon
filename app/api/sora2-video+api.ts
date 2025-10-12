@@ -31,11 +31,11 @@ export async function POST(request: Request) {
     const aspectRatio = body?.aspect_ratio || '16:9';
 
     const sizeMap: Record<string, string> = {
-      '16:9': '1920x1080',
-      '9:16': '1080x1920',
-      '1:1': '1080x1080'
+      '16:9': '1280x720',
+      '9:16': '720x1280',
+      '1:1': '1024x1024'
     };
-    const size = sizeMap[aspectRatio] || '1920x1080';
+    const size = sizeMap[aspectRatio] || '1280x720';
 
     console.log('📡 [SORA2] Création de la tâche via /v1/videos...');
     console.log('📝 [SORA2] Paramètres:', { prompt: prompt.substring(0, 100), duration, size });
