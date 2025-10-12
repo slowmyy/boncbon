@@ -315,15 +315,15 @@ export class PixVerseService {
 
           const data = await uploadResponse.json();
           const uploadResult = data.data?.[0] || data[0];
-          const imageURL = uploadResult?.imageURL || uploadResult?.imagePath;
+          const imageUUID = uploadResult?.imageUUID;
 
-          if (!imageURL) {
-            reject(new Error('No imageURL in upload response'));
+          if (!imageUUID) {
+            reject(new Error('No imageUUID in upload response'));
             return;
           }
 
-          console.log('✅ [PIXVERSE] Image uploadée:', imageURL);
-          resolve(imageURL);
+          console.log('✅ [PIXVERSE] Image uploadée, UUID:', imageUUID);
+          resolve(imageUUID);
         };
         reader.onerror = reject;
         reader.readAsDataURL(blob);
@@ -348,7 +348,7 @@ export class PixVerseService {
     try {
       if (onProgress) onProgress(10);
 
-      let frameImages: string[] | undefined;
+      let frameImages: Array<{ inputImage: string; frame?: string }> | undefined;
       let dimensions = { width: 1280, height: 720 };
 
       if (params.referenceImage) {
@@ -358,8 +358,8 @@ export class PixVerseService {
 
         console.log('📤 [PIXVERSE] Upload image de référence...');
         if (onProgress) onProgress(20);
-        const imageURL = await this.uploadImage(params.referenceImage);
-        frameImages = [imageURL];
+        const imageUUID = await this.uploadImage(params.referenceImage);
+        frameImages = [{ inputImage: imageUUID, frame: 'first' }];
       }
 
       if (onProgress) onProgress(30);
@@ -367,7 +367,7 @@ export class PixVerseService {
       const videoRequest: any = {
         taskType: 'videoInference',
         taskUUID: this.generateUUID(),
-        model: 'pixverse:1@5',
+        model: 'pixverse:1@3',
         positivePrompt: params.prompt,
         width: dimensions.width,
         height: dimensions.height,
