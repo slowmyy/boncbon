@@ -235,6 +235,15 @@ class StorageService {
 
   // Sauvegarder une image dans le stockage local
   async saveImage(image: Omit<StoredImage, 'id'>): Promise<StoredImage> {
+    console.log('💾 [STORAGE] Début sauvegarde:', {
+      isVideo: image.isVideo,
+      url: image.url?.substring(0, 100) || 'null',
+      urlLength: image.url?.length || 0,
+      prompt: image.prompt?.substring(0, 50),
+      duration: image.duration,
+      model: image.model
+    });
+
     const storedImage: StoredImage = {
       ...image,
       id: this.generateId(),
@@ -243,42 +252,70 @@ class StorageService {
       duration: image.duration,
     };
 
-    // Check if the URL is a large base64 data URL
+    console.log('📦 [STORAGE] Objet créé:', {
+      id: storedImage.id,
+      isVideo: storedImage.isVideo,
+      url: storedImage.url?.substring(0, 100),
+      hasUrl: !!storedImage.url
+    });
+
     const isLargeDataUrl = image.url.startsWith('data:image/') && image.url.length > 5000;
 
     if (isLargeDataUrl) {
+      console.log('📦 [STORAGE] Grande data URL détectée, sauvegarde locale...');
       try {
         if (Platform.OS === 'web') {
-          // Save to IndexedDB and store reference
           await this.saveImageToIndexedDB(storedImage.id, image.url);
           storedImage.url = `local_idb://${storedImage.id}`;
           storedImage.isLocalRef = true;
         } else {
-          // Save to file system and store file path
           const fileUri = await this.saveImageToFileSystem(storedImage.id, image.url);
           storedImage.url = fileUri;
           storedImage.isLocalRef = true;
         }
       } catch (error) {
         console.error('Error saving large image data:', error);
-        // Fallback: save with external URL if available, otherwise skip large data storage
         console.warn('Falling back to external URL storage due to quota limits');
-        // Don't throw error, just continue without local storage
       }
     }
 
     if (storedImage.isVideo) {
+      console.log('🎬 [STORAGE] Type VIDÉO détecté, sauvegarde dans VIDEOS_STORAGE_KEY');
+
       const existingVideos = this.getAllVideos();
+      console.log('📊 [STORAGE] Vidéos existantes:', existingVideos.length);
+
       const updatedVideos = [storedImage, ...existingVideos].slice(0, this.MAX_VIDEOS);
+      console.log('📊 [STORAGE] Vidéos après ajout:', updatedVideos.length);
 
       if (typeof window !== 'undefined' && window.localStorage) {
         try {
-          localStorage.setItem(this.VIDEOS_STORAGE_KEY, JSON.stringify(updatedVideos));
-          console.log('[STORAGE] Video saved successfully:', storedImage.id);
+          const jsonString = JSON.stringify(updatedVideos);
+          console.log('💾 [STORAGE] JSON à sauvegarder (length):', jsonString.length);
+
+          localStorage.setItem(this.VIDEOS_STORAGE_KEY, jsonString);
+          console.log('✅ [STORAGE] Vidéo sauvegardée avec succès dans localStorage');
+          console.log('✅ [STORAGE] ID vidéo:', storedImage.id);
+
+          const verification = localStorage.getItem(this.VIDEOS_STORAGE_KEY);
+          if (verification) {
+            console.log('✅ [STORAGE] Vérification: vidéos présentes dans localStorage');
+            const parsedVideos = JSON.parse(verification);
+            console.log('✅ [STORAGE] Nombre de vidéos après vérification:', parsedVideos.length);
+            console.log('✅ [STORAGE] IDs des vidéos:', parsedVideos.map((v: StoredImage) => v.id));
+          } else {
+            console.error('❌ [STORAGE] Vérification échouée: aucune vidéo trouvée');
+          }
+
           galleryEvents.notifyNewMedia();
+          console.log('📢 [STORAGE] Événement galerie notifié');
+
         } catch (error) {
-          console.error('[STORAGE] Error saving video:', error);
+          console.error('❌ [STORAGE] Erreur sauvegarde vidéo:', error);
+          throw error;
         }
+      } else {
+        console.error('❌ [STORAGE] localStorage non disponible');
       }
 
       return storedImage;
@@ -316,15 +353,29 @@ class StorageService {
   }
 
   getAllVideos(): StoredImage[] {
+    console.log('📂 [STORAGE] getAllVideos() appelé');
+
     if (typeof window === 'undefined' || !window.localStorage) {
+      console.error('❌ [STORAGE] localStorage non disponible');
       return [];
     }
 
     try {
       const stored = localStorage.getItem(this.VIDEOS_STORAGE_KEY);
-      return stored ? JSON.parse(stored) : [];
+      console.log('📦 [STORAGE] Données brutes localStorage:', stored ? `${stored.length} chars` : 'null');
+
+      if (!stored) {
+        console.log('ℹ️ [STORAGE] Aucune vidéo dans localStorage');
+        return [];
+      }
+
+      const videos = JSON.parse(stored);
+      console.log('✅ [STORAGE] Vidéos parsées:', videos.length);
+      console.log('📊 [STORAGE] IDs des vidéos:', videos.map((v: StoredImage) => v.id));
+
+      return videos;
     } catch (error) {
-      console.error('Error loading videos from storage:', error);
+      console.error('❌ [STORAGE] Erreur chargement vidéos:', error);
       return [];
     }
   }

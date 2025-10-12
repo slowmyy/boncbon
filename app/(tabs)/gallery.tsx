@@ -182,24 +182,38 @@ export default function Gallery() {
   }, []);
 
   const loadMedia = useCallback(async () => {
+    console.log('🔄 [GALLERY] Début chargement médias...');
     try {
       const storedImages = storageService.getAllImages();
+      console.log('🖼️ [GALLERY] Images chargées:', storedImages.length);
+
       const storedVideos = storageService.getAllVideos();
+      console.log('🎬 [GALLERY] Vidéos chargées:', storedVideos.length);
+
+      if (storedVideos.length > 0) {
+        console.log('📊 [GALLERY] Détails vidéos:', storedVideos.map(v => ({
+          id: v.id,
+          model: v.model,
+          url: v.url?.substring(0, 100),
+          duration: v.duration
+        })));
+      }
 
       const images: StoredImage[] = storedImages.map(img => ({ ...img, isVideo: false }));
       const videos: StoredImage[] = storedVideos.map(vid => ({ ...vid, isVideo: true }));
 
       const combined = [...images, ...videos].sort((a, b) => b.timestamp - a.timestamp);
 
-      console.log('Médias chargés:', {
+      console.log('✅ [GALLERY] Médias combinés:', {
         images: images.length,
         videos: videos.length,
         total: combined.length
       });
 
       setAllMedia(combined);
+      console.log('✅ [GALLERY] State allMedia mis à jour');
     } catch (error) {
-      console.error('Erreur lors du chargement des médias:', error);
+      console.error('❌ [GALLERY] Erreur chargement médias:', error);
     } finally {
       setIsLoading(false);
     }
@@ -221,11 +235,25 @@ export default function Gallery() {
   }, [loadMedia]);
 
   const filteredMedia = useMemo(() => {
+    console.log('🔍 [GALLERY] Filtrage médias:', {
+      activeFilter,
+      totalMedia: allMedia.length
+    });
+
+    let filtered: StoredImage[];
     if (activeFilter === 'photos') {
-      return allMedia.filter(item => !item.isVideo);
+      filtered = allMedia.filter(item => !item.isVideo);
     } else {
-      return allMedia.filter(item => item.isVideo);
+      filtered = allMedia.filter(item => item.isVideo);
     }
+
+    console.log('✅ [GALLERY] Médias filtrés:', {
+      filter: activeFilter,
+      count: filtered.length,
+      items: filtered.map(f => ({ id: f.id, isVideo: f.isVideo, model: f.model }))
+    });
+
+    return filtered;
   }, [allMedia, activeFilter]);
 
   const onRefresh = useCallback(async () => {
