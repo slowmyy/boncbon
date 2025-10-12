@@ -35,6 +35,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Video as ExpoVideo, ResizeMode } from 'expo-av';
 import { runwareService } from '@/services/runware';
 import { storageService } from '@/services/storage';
+import { sora2Service } from '@/services/sora2';
 import { useFocusEffect } from '@react-navigation/native';
 import ProfileHeader from '@/components/ProfileHeader';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -73,11 +74,11 @@ const VIDEO_INSPIRATION_PROMPTS = [
 
 // Options de qualité disponibles
 const VIDEO_QUALITY_OPTIONS = [
-  { 
-    id: 'standard', 
-    name: 'Standard', 
-    emoji: '⚡', 
-    description: 'Rapide et fluide', 
+  {
+    id: 'standard',
+    name: 'Standard',
+    emoji: '⚡',
+    description: 'Rapide et fluide',
     model: 'bytedance:1@1',
     modelName: 'Seedance 1.0 Lite',
     duration: 6,
@@ -87,16 +88,31 @@ const VIDEO_QUALITY_OPTIONS = [
       { id: 'portrait', name: 'Portrait', width: 832, height: 1120, emoji: '📱' },
     ]
   },
-  { 
-    id: 'ultra', 
-    name: 'Ultra', 
-    emoji: '💎', 
-    description: 'Veo 3 Fast HD', 
-    model: 'google:3@1', 
+  {
+    id: 'ultra',
+    name: 'Ultra',
+    emoji: '💎',
+    description: 'Veo 3 Fast HD',
+    model: 'google:3@1',
     modelName: 'Google Veo 3 Fast',
     duration: 8,
     supportedFormats: [
       { id: 'landscape', name: 'Paysage', width: 1920, height: 1080, emoji: '🖥️' },
+    ]
+  },
+  {
+    id: 'max',
+    name: 'Max',
+    emoji: '🚀',
+    description: 'Sora-2 Normal HD',
+    model: 'sora2-normal',
+    modelName: 'Sora-2 Normal',
+    duration: 5,
+    durationOptions: [5, 10],
+    supportedFormats: [
+      { id: 'landscape', name: 'Paysage', width: 1920, height: 1080, emoji: '🖥️', aspectRatio: '16:9' },
+      { id: 'portrait', name: 'Portrait', width: 1080, height: 1920, emoji: '📱', aspectRatio: '9:16' },
+      { id: 'square', name: 'Carré', width: 1080, height: 1080, emoji: '⬜', aspectRatio: '1:1' },
     ]
   },
 ];
@@ -110,6 +126,7 @@ export default function VideoGenerator() {
   const [referenceImagePreview, setReferenceImagePreview] = useState<string | null>(null);
   const [selectedQuality, setSelectedQuality] = useState(VIDEO_QUALITY_OPTIONS[0]);
   const [selectedVideoFormat, setSelectedVideoFormat] = useState(VIDEO_QUALITY_OPTIONS[0].supportedFormats[0]);
+  const [selectedDuration, setSelectedDuration] = useState(5);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [videoLoaded, setVideoLoaded] = useState(false);
@@ -152,7 +169,10 @@ export default function VideoGenerator() {
     if (!isCurrentFormatAvailable && availableVideoFormats.length > 0) {
       setSelectedVideoFormat(availableVideoFormats[0]);
     }
-  }, [availableVideoFormats, selectedVideoFormat.id]);
+    if (selectedQuality.id === 'max' && selectedQuality.durationOptions) {
+      setSelectedDuration(selectedQuality.durationOptions[0]);
+    }
+  }, [availableVideoFormats, selectedVideoFormat.id, selectedQuality.id]);
 
   // Forcer la sélection du modèle Ultra quand une image est importée
   useEffect(() => {
@@ -308,11 +328,10 @@ export default function VideoGenerator() {
     setIsVideoRetrying(false);
 
     try {
-      // Obtenir le modèle sélectionné selon la qualité
       const qualityOption = VIDEO_QUALITY_OPTIONS.find(q => q.id === selectedQuality.id);
       const selectedModel = qualityOption?.model || 'bytedance:1@1';
       const modelName = qualityOption?.modelName || 'Seedance 1.0 Lite';
-      const videoDuration = qualityOption?.duration || 5;
+      const videoDuration = selectedQuality.id === 'max' ? selectedDuration : (qualityOption?.duration || 5);
       const videoWidth = selectedVideoFormat.width;
       const videoHeight = selectedVideoFormat.height;
 
@@ -324,29 +343,52 @@ export default function VideoGenerator() {
         resolution: `${videoWidth}x${videoHeight}`,
       });
 
-      const videoUrl = await videoService.current.generateVideo({
-        prompt: prompt,
-        referenceImage: referenceImage || undefined,
-        model: selectedModel,
-        width: videoWidth,
-        height: videoHeight,
-        duration: videoDuration,
-        onProgress: (progress) => {
-          setLoadingProgress(progress);
-          Animated.timing(progressAnim, {
-            toValue: progress / 100,
-            duration: 300,
-            easing: Easing.out(Easing.ease),
-            useNativeDriver: false,
-          }).start();
-        },
-      });
+      let videoUrl: string;
+
+      if (selectedQuality.id === 'max') {
+        const aspectRatio = (selectedVideoFormat as any).aspectRatio || '16:9';
+        const result = await sora2Service.generateVideo(
+          {
+            prompt: prompt,
+            duration: videoDuration as 5 | 10,
+            aspectRatio: aspectRatio as '16:9' | '9:16' | '1:1'
+          },
+          (progress) => {
+            setLoadingProgress(progress);
+            Animated.timing(progressAnim, {
+              toValue: progress / 100,
+              duration: 300,
+              easing: Easing.out(Easing.ease),
+              useNativeDriver: false,
+            }).start();
+          }
+        );
+        videoUrl = result.videoUrl;
+      } else {
+        videoUrl = await videoService.current!.generateVideo({
+          prompt: prompt,
+          referenceImage: referenceImage || undefined,
+          model: selectedModel,
+          width: videoWidth,
+          height: videoHeight,
+          duration: videoDuration,
+          onProgress: (progress) => {
+            setLoadingProgress(progress);
+            Animated.timing(progressAnim, {
+              toValue: progress / 100,
+              duration: 300,
+              easing: Easing.out(Easing.ease),
+              useNativeDriver: false,
+            }).start();
+          },
+        });
+      }
 
       const newVideo: GeneratedVideo = {
         url: videoUrl,
         prompt: prompt,
         timestamp: Date.now(),
-        duration: 6,
+        duration: videoDuration,
         model: modelName,
         taskUUID: generateUUIDv4(),
         referenceImage: referenceImagePreview || undefined,
@@ -609,6 +651,33 @@ export default function VideoGenerator() {
             ))}
           </View>
         </View>
+
+        {/* Sélection de la durée pour Max (Sora-2) */}
+        {selectedQuality.id === 'max' && selectedQuality.durationOptions && (
+          <View style={styles.inputSection}>
+            <Text style={styles.label}>Durée de la vidéo</Text>
+            <View style={styles.videoFormatsContainer}>
+              {selectedQuality.durationOptions.map((duration) => (
+                <TouchableOpacity
+                  key={duration}
+                  style={[
+                    styles.videoFormatButton,
+                    selectedDuration === duration && styles.selectedVideoFormatButton
+                  ]}
+                  onPress={() => setSelectedDuration(duration)}
+                >
+                  <Clock size={20} color={selectedDuration === duration ? '#FF6B35' : '#666666'} />
+                  <Text style={[
+                    styles.videoFormatButtonText,
+                    selectedDuration === duration && styles.selectedVideoFormatButtonText
+                  ]}>
+                    {duration}s
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
 
         <TouchableOpacity 
           style={styles.advancedToggle}
