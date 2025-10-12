@@ -375,7 +375,7 @@ export class PixVerseService {
       }
 
       if (params.motionMode) {
-        providerSettings.motionmode = params.motionMode;
+        providerSettings.motionMode = params.motionMode;
       }
 
       if (params.soundEffectSwitch !== undefined) {
