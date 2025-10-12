@@ -367,7 +367,7 @@ export class PixVerseService {
       const videoRequest: any = {
         taskType: 'videoInference',
         taskUUID: this.generateUUID(),
-        model: 'pixverse:1@3',
+        model: 'pixverse:1@5',
         positivePrompt: params.prompt,
         width: dimensions.width,
         height: dimensions.height,
