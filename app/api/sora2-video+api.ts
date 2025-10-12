@@ -36,7 +36,7 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify({
         model: 'sora-2',
-        stream: true,
+        stream: false,
         messages: [
           {
             role: 'user',
@@ -49,7 +49,8 @@ export async function POST(request: Request) {
     console.log('📥 [SORA2] Réponse reçue:', {
       status: response.status,
       statusText: response.statusText,
-      ok: response.ok
+      ok: response.ok,
+      contentType: response.headers.get('content-type')
     });
 
     if (!response.ok) {
@@ -68,18 +69,23 @@ export async function POST(request: Request) {
       );
     }
 
-    const data = await response.json();
+    const responseText = await response.text();
+    console.log('📝 [SORA2] Réponse brute (premiers 500 chars):', responseText.substring(0, 500));
+
+    const data = JSON.parse(responseText);
+    console.log('📊 [SORA2] Réponse complète:', JSON.stringify(data, null, 2));
     console.log('📊 [SORA2] Données reçues:', {
       hasChoices: !!data.choices,
       hasLinks: !!data.links,
-      id: data.id
+      id: data.id,
+      choicesLength: data.choices?.length || 0
     });
 
     let videoUrl: string | null = null;
 
     if (data.choices?.[0]?.message?.content) {
       const content = data.choices[0].message.content;
-      console.log('📝 [SORA2] Contenu message:', content.substring(0, 100));
+      console.log('📝 [SORA2] Contenu message complet:', content);
 
       const mp4Match = content.match(/https?:\/\/[^\s"]+\.mp4/);
       if (mp4Match) {
@@ -94,13 +100,16 @@ export async function POST(request: Request) {
           }
         );
       }
+      console.log('⚠️ [SORA2] Pas de match .mp4 dans le contenu');
+    } else {
+      console.log('⚠️ [SORA2] Pas de choices[0].message.content dans la réponse');
     }
 
     if (data.links?.source) {
       console.log('🔗 [SORA2] Polling via links.source:', data.links.source);
       videoUrl = await pollSora2Result(data.links.source, apiKey);
 
-      console.log('✅ [SORA2] Vidéo prête:', videoUrl);
+      console.log('✅ [SORA2] Vidéo prête après polling:', videoUrl);
       return new Response(
         JSON.stringify({ videoUrl, taskId: data.id || 'unknown' }),
         {
@@ -108,11 +117,21 @@ export async function POST(request: Request) {
           headers: { 'Content-Type': 'application/json' }
         }
       );
+    } else {
+      console.log('⚠️ [SORA2] Pas de data.links.source dans la réponse');
     }
 
     console.error('❌ [SORA2] Aucune URL trouvée dans la réponse');
+    console.error('❌ [SORA2] Structure complète de data:', JSON.stringify(data, null, 2));
     return new Response(
-      JSON.stringify({ error: 'Aucune URL de vidéo trouvée' }),
+      JSON.stringify({
+        error: 'Aucune URL de vidéo trouvée',
+        debug: {
+          hasChoices: !!data.choices,
+          hasLinks: !!data.links,
+          dataKeys: Object.keys(data)
+        }
+      }),
       {
         status: 500,
         headers: { 'Content-Type': 'application/json' }
@@ -139,6 +158,8 @@ async function pollSora2Result(statusUrl: string, apiKey: string): Promise<strin
   let attempts = 0;
   const maxAttempts = 120;
 
+  console.log(`🔗 [SORA2] Début polling sur: ${statusUrl}`);
+
   while (attempts < maxAttempts) {
     attempts++;
     console.log(`🔄 [SORA2] Polling tentative ${attempts}/${maxAttempts}`);
@@ -150,6 +171,8 @@ async function pollSora2Result(statusUrl: string, apiKey: string): Promise<strin
         }
       });
 
+      console.log(`📡 [SORA2] Polling response status: ${res.status}`);
+
       if (!res.ok) {
         console.warn(`⚠️ [SORA2] Erreur polling ${res.status}, continue...`);
         await new Promise(r => setTimeout(r, 5000));
@@ -158,17 +181,19 @@ async function pollSora2Result(statusUrl: string, apiKey: string): Promise<strin
 
       const text = await res.text();
       console.log(`📊 [SORA2] Response text length: ${text.length}`);
+      console.log(`📝 [SORA2] Response text (first 500 chars):`, text.substring(0, 500));
 
       const match = text.match(/https?:\/\/[^\s\]"]+\.mp4/i);
       if (match) {
         console.log("🎥 [SORA2] Vidéo prête:", match[0]);
         return match[0];
+      } else {
+        console.log("⏳ [SORA2] Aucune URL .mp4 trouvée dans la réponse");
+        console.log("📝 [SORA2] Texte complet:", text.substring(0, 1000));
       }
 
-      console.log("⏳ [SORA2] Vidéo en cours de génération...");
-
     } catch (pollError) {
-      console.warn('⚠️ [SORA2] Erreur polling (continue):', pollError);
+      console.error('⚠️ [SORA2] Erreur polling:', pollError);
     }
 
     await new Promise(r => setTimeout(r, 5000));

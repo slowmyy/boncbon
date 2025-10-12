@@ -346,6 +346,7 @@ export default function VideoGenerator() {
       let videoUrl: string;
 
       if (selectedQuality.id === 'max') {
+        console.log('🚀 [VIDEO] Génération Sora-2 commencée');
         const aspectRatio = (selectedVideoFormat as any).aspectRatio || '16:9';
         const result = await sora2Service.generateVideo(
           {
@@ -363,6 +364,12 @@ export default function VideoGenerator() {
             }).start();
           }
         );
+        console.log('✅ [VIDEO] Résultat Sora-2 reçu:', {
+          hasVideoUrl: !!result.videoUrl,
+          videoUrl: result.videoUrl?.substring(0, 100),
+          taskId: result.taskId,
+          duration: result.duration
+        });
         videoUrl = result.videoUrl;
       } else {
         videoUrl = await videoService.current!.generateVideo({
@@ -384,6 +391,9 @@ export default function VideoGenerator() {
         });
       }
 
+      console.log('📹 [VIDEO] URL vidéo finale:', videoUrl);
+      console.log('💾 [VIDEO] Création objet vidéo pour sauvegarde');
+
       const newVideo: GeneratedVideo = {
         url: videoUrl,
         prompt: prompt,
@@ -394,15 +404,16 @@ export default function VideoGenerator() {
         referenceImage: referenceImagePreview || undefined,
       };
 
+      console.log('📺 [VIDEO] Affichage vidéo dans UI');
       setGeneratedVideo(newVideo);
 
-      // Sauvegarder la vidéo
-      storageService.saveImage({
+      console.log('💾 [VIDEO] Sauvegarde dans galerie...');
+      await storageService.saveImage({
         url: videoUrl,
         prompt: prompt,
         timestamp: Date.now(),
         model: modelName,
-        format: 'Vidéo 6s',
+        format: `Vidéo ${videoDuration}s`,
         dimensions: `${videoWidth}x${videoHeight}`,
         style: 'Video Generation',
         isVideo: true,
@@ -410,6 +421,7 @@ export default function VideoGenerator() {
         videoWidth: videoWidth,
         videoHeight: videoHeight,
       });
+      console.log('✅ [VIDEO] Vidéo sauvegardée dans galerie');
 
     } catch (error) {
       console.error('❌ [VIDEO] Erreur de génération:', error);
