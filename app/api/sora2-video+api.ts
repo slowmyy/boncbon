@@ -30,165 +30,82 @@ export async function POST(request: Request) {
     const duration = body?.duration || 5;
     const aspectRatio = body?.aspect_ratio || '16:9';
 
-    console.log('📡 [SORA2] Envoi vers CometAPI Chat Completions...');
-    console.log('📝 [SORA2] Paramètres:', { prompt: prompt.substring(0, 100), duration, aspectRatio });
+    const sizeMap: Record<string, string> = {
+      '16:9': '1920x1080',
+      '9:16': '1080x1920',
+      '1:1': '1080x1080'
+    };
+    const size = sizeMap[aspectRatio] || '1920x1080';
 
-    const response = await fetch('https://api.cometapi.com/v1/chat/completions', {
+    console.log('📡 [SORA2] Création de la tâche via /v1/videos...');
+    console.log('📝 [SORA2] Paramètres:', { prompt: prompt.substring(0, 100), duration, size });
+
+    const formdata = new FormData();
+    formdata.append('prompt', prompt);
+    formdata.append('model', 'sora-2');
+    formdata.append('seconds', duration.toString());
+    formdata.append('size', size);
+
+    const createResponse = await fetch('https://api.cometapi.com/v1/videos', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
+        'Authorization': `Bearer ${apiKey}`
       },
-      body: JSON.stringify({
-        model: 'sora-2',
-        stream: false,
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ]
-      })
+      body: formdata
     });
 
-    console.log('📥 [SORA2] Réponse reçue:', {
-      status: response.status,
-      statusText: response.statusText,
-      ok: response.ok,
-      contentType: response.headers.get('content-type')
+    console.log('📥 [SORA2] Réponse création tâche:', {
+      status: createResponse.status,
+      statusText: createResponse.statusText,
+      ok: createResponse.ok
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ [SORA2] Erreur:', errorText);
+    if (!createResponse.ok) {
+      const errorText = await createResponse.text();
+      console.error('❌ [SORA2] Erreur création tâche:', errorText);
 
       return new Response(
         JSON.stringify({
-          error: `Sora-2 error: ${response.status}`,
+          error: `Sora-2 task creation error: ${createResponse.status}`,
           details: errorText
         }),
         {
-          status: response.status,
+          status: createResponse.status,
           headers: { 'Content-Type': 'application/json' }
         }
       );
     }
 
-    const responseText = await response.text();
-    console.log('📝 [SORA2] Réponse brute (premiers 1000 chars):', responseText.substring(0, 1000));
+    const createData = await createResponse.json();
+    console.log('📊 [SORA2] Données création tâche:', createData);
 
-    let data: any;
-    try {
-      data = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('❌ [SORA2] Erreur parsing JSON:', parseError);
+    const videoId = createData.id;
+
+    if (!videoId) {
+      console.error('❌ [SORA2] Aucun ID de tâche dans la réponse');
       return new Response(
-        JSON.stringify({ error: 'Invalid JSON response from CometAPI' }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log('📊 [SORA2] Structure réponse:', {
-      hasChoices: !!data.choices,
-      hasLinks: !!data.links,
-      hasId: !!data.id,
-      topLevelKeys: Object.keys(data),
-      choicesLength: data.choices?.length || 0
-    });
-
-    let videoUrl: string | null = null;
-
-    if (data.choices?.[0]?.message?.content) {
-      const content = data.choices[0].message.content;
-      console.log('📝 [SORA2] Contenu message (1000 chars):', content.substring(0, 1000));
-
-      const mp4Match = content.match(/https?:\/\/[^\s"\]]+\.mp4/i);
-      if (mp4Match) {
-        videoUrl = mp4Match[0];
-        console.log('✅ [SORA2] URL vidéo trouvée dans content:', videoUrl);
-
-        return new Response(
-          JSON.stringify({
-            videoUrl,
-            taskId: data.id || 'unknown',
-            source: 'choices.content'
-          }),
-          {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' }
-          }
-        );
-      }
-
-      console.log('⚠️ [SORA2] Pas de .mp4 trouvé dans content');
-    }
-
-    if (data.links?.source) {
-      console.log('🔗 [SORA2] Polling via links.source:', data.links.source);
-
-      try {
-        videoUrl = await pollSora2Result(data.links.source, apiKey);
-
-        console.log('✅ [SORA2] Vidéo prête après polling:', videoUrl);
-        return new Response(
-          JSON.stringify({
-            videoUrl,
-            taskId: data.id || 'unknown',
-            source: 'polling'
-          }),
-          {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' }
-          }
-        );
-      } catch (pollError) {
-        console.error('❌ [SORA2] Erreur polling:', pollError);
-        return new Response(
-          JSON.stringify({
-            error: 'Polling failed',
-            details: pollError instanceof Error ? pollError.message : 'Unknown error'
-          }),
-          {
-            status: 500,
-            headers: { 'Content-Type': 'application/json' }
-          }
-        );
-      }
-    }
-
-    console.log('🔍 [SORA2] Scan récursif de la réponse...');
-    videoUrl = findVideoUrlInObject(data);
-
-    if (videoUrl) {
-      console.log('✅ [SORA2] URL trouvée via scan récursif:', videoUrl);
-      return new Response(
-        JSON.stringify({
-          videoUrl,
-          taskId: data.id || 'unknown',
-          source: 'recursive_scan'
-        }),
+        JSON.stringify({ error: 'Aucun ID de tâche retourné par CometAPI' }),
         {
-          status: 200,
+          status: 500,
           headers: { 'Content-Type': 'application/json' }
         }
       );
     }
 
-    console.error('❌ [SORA2] AUCUNE URL trouvée après toutes les méthodes');
-    console.error('❌ [SORA2] Dump complet de la réponse:', JSON.stringify(data, null, 2));
+    console.log('✅ [SORA2] Tâche créée, ID:', videoId);
+    console.log('⏳ [SORA2] Début du polling...');
 
+    const videoUrl = await pollSora2Video(videoId, apiKey);
+
+    console.log('✅ [SORA2] Vidéo prête:', videoUrl);
     return new Response(
       JSON.stringify({
-        error: 'Aucune URL de vidéo trouvée',
-        debug: {
-          hasChoices: !!data.choices,
-          hasLinks: !!data.links,
-          dataKeys: Object.keys(data),
-          fullResponse: data
-        }
+        videoUrl,
+        taskId: videoId,
+        source: 'sora-2-official-api'
       }),
       {
-        status: 500,
+        status: 200,
         headers: { 'Content-Type': 'application/json' }
       }
     );
@@ -209,53 +126,48 @@ export async function POST(request: Request) {
   }
 }
 
-async function pollSora2Result(statusUrl: string, apiKey: string): Promise<string> {
+async function pollSora2Video(videoId: string, apiKey: string): Promise<string> {
   let attempts = 0;
   const maxAttempts = 120;
 
-  console.log(`🔗 [SORA2] Début polling sur: ${statusUrl}`);
+  console.log(`🔗 [SORA2] Début polling sur: /v1/videos/${videoId}`);
 
   while (attempts < maxAttempts) {
     attempts++;
     console.log(`🔄 [SORA2] Polling tentative ${attempts}/${maxAttempts}`);
 
     try {
-      const res = await fetch(statusUrl, {
+      const statusRes = await fetch(`https://api.cometapi.com/v1/videos/${videoId}`, {
         headers: {
-          "Authorization": `Bearer ${apiKey}`
+          'Authorization': `Bearer ${apiKey}`
         }
       });
 
-      console.log(`📡 [SORA2] Polling response status: ${res.status}`);
+      console.log(`📡 [SORA2] Polling response status: ${statusRes.status}`);
 
-      if (!res.ok) {
-        console.warn(`⚠️ [SORA2] Erreur polling ${res.status}, continue...`);
+      if (!statusRes.ok) {
+        console.warn(`⚠️ [SORA2] Erreur polling ${statusRes.status}, continue...`);
         await new Promise(r => setTimeout(r, 5000));
         continue;
       }
 
-      const text = await res.text();
-      console.log(`📊 [SORA2] Response text length: ${text.length}`);
-      console.log(`📝 [SORA2] Response preview (500 chars):`, text.substring(0, 500));
+      const statusJson = await statusRes.json();
+      console.log(`📊 [SORA2] Statut: ${statusJson.status}, Progress: ${statusJson.progress || 'N/A'}`);
+      console.log(`📝 [SORA2] Données complètes:`, JSON.stringify(statusJson, null, 2));
 
-      const match = text.match(/https?:\/\/[^\s\]"]+\.mp4/i);
-      if (match) {
-        console.log("🎥 [SORA2] Vidéo prête:", match[0]);
-        return match[0];
+      if (statusJson.status === 'completed' && statusJson.assets && statusJson.assets.length > 0) {
+        const videoUrl = statusJson.assets[0].url;
+        console.log("🎥 [SORA2] Vidéo prête:", videoUrl);
+        return videoUrl;
       }
 
-      try {
-        const jsonData = JSON.parse(text);
-        const urlFromJson = findVideoUrlInObject(jsonData);
-        if (urlFromJson) {
-          console.log("🎥 [SORA2] Vidéo trouvée via JSON parse:", urlFromJson);
-          return urlFromJson;
-        }
-      } catch {
-        // Pas de JSON valide, continuer
+      if (statusJson.status === 'failed' || statusJson.error) {
+        const errorMsg = statusJson.error || 'Génération vidéo échouée';
+        console.error('❌ [SORA2] Erreur:', errorMsg);
+        throw new Error(errorMsg);
       }
 
-      console.log("⏳ [SORA2] Vidéo pas encore prête...");
+      console.log("⏳ [SORA2] Vidéo en cours de génération...");
 
     } catch (pollError) {
       console.error('⚠️ [SORA2] Erreur polling:', pollError);
@@ -266,33 +178,4 @@ async function pollSora2Result(statusUrl: string, apiKey: string): Promise<strin
 
   console.error('❌ [SORA2] Timeout après 10 minutes');
   throw new Error('Timeout: vidéo non générée après 10 minutes');
-}
-
-function findVideoUrlInObject(obj: any, depth: number = 0, maxDepth: number = 10): string | null {
-  if (depth > maxDepth) return null;
-  if (!obj || typeof obj !== 'object') return null;
-
-  if (typeof obj === 'string' && obj.match(/https?:\/\/[^\s"]+\.mp4/i)) {
-    return obj;
-  }
-
-  for (const key in obj) {
-    const value = obj[key];
-
-    if (key.toLowerCase().includes('video') ||
-        key.toLowerCase().includes('url') ||
-        key.toLowerCase().includes('mp4')) {
-
-      if (typeof value === 'string' && value.match(/https?:\/\/[^\s"]+\.mp4/i)) {
-        return value;
-      }
-    }
-
-    if (typeof value === 'object' && value !== null) {
-      const found = findVideoUrlInObject(value, depth + 1, maxDepth);
-      if (found) return found;
-    }
-  }
-
-  return null;
 }
