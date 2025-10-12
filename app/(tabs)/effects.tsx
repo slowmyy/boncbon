@@ -13,24 +13,34 @@ import {
   Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { 
-  Camera, 
-  CreditCard, 
-  Star, 
-  RotateCcw, 
+import {
+  Camera,
+  CreditCard,
+  Star,
+  RotateCcw,
   Package,
   Upload,
   Download,
   Share,
   ArrowLeft,
-  Sparkles
+  Sparkles,
+  Play,
+  Film
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { Video } from 'expo-av';
 import { runwareService } from '@/services/runware';
 import { storageService } from '@/services/storage';
+import {
+  pixverseService,
+  PIXVERSE_EFFECTS,
+  PIXVERSE_STYLES,
+  PIXVERSE_RESOLUTIONS
+} from '@/services/pixverse';
 import ProfileHeader from '@/components/ProfileHeader';
 
-// Types pour les effets
+type EffectType = 'image' | 'pixverse_video';
+
 interface Effect {
   id: string;
   title: string;
@@ -40,10 +50,11 @@ interface Effect {
   backgroundColor: string;
   slots: number;
   prompt: string;
+  type: EffectType;
+  pixverseEffectId?: string;
 }
 
-// Configuration des effets avec leurs prompts uniques
-const EFFECTS: Effect[] = [
+const IMAGE_EFFECTS: Effect[] = [
   {
     id: 'celebrity',
     title: 'Celebrity IA',
@@ -52,6 +63,7 @@ const EFFECTS: Effect[] = [
     color: '#F59E0B',
     backgroundColor: '#FFFBEB',
     slots: 2,
+    type: 'image',
     prompt: 'Take a photo taken with a Polaroid camera. The photo should look like an ordinary photograph, without an explicit subject or property. The photo should have a slight blur and a consistent light source, like a flash from a dark room, scattered throughout the photo. Don\'t change the face. Change the background behind those two people with white curtains. With that boy standing next to me.'
   },
   {
@@ -62,6 +74,7 @@ const EFFECTS: Effect[] = [
     color: '#10B981',
     backgroundColor: '#ECFDF5',
     slots: 1,
+    type: 'image',
     prompt: 'Transforme le personnage en joueur de football style rendu AAA. Pose 3/4 dynamique sur pelouse de stade nocturne. Maillot générique (couleurs personnalisées) sans blason ni sponsor réels. Crée aussi une carte joueur type "Ultimate" avec note globale, poste, et 6 stats (PAC, SHO, PAS, DRI, DEF, PHY) - valeurs fictives. Sur l\'écran d\'ordinateur, montre l\'interface de création de la carte (avant→après). Détails sueur/herbe, DOF léger. Aucune marque officielle. Très haute définition.'
   },
   {
@@ -72,6 +85,7 @@ const EFFECTS: Effect[] = [
     color: '#3B82F6',
     backgroundColor: '#EFF6FF',
     slots: 2,
+    type: 'image',
     prompt: 'Create an image, Take a photo taken with a Polaroid camera. The photo should look like an ordinary photograph, without an explicit subject or property. The photo should have a slight blur and a a dark consistent light source, like a flash from room, scattered throughout the photo. Don\'t Change the face. Change the background behind those two people with White curtains. With me hugging my young self'
   },
   {
@@ -82,6 +96,7 @@ const EFFECTS: Effect[] = [
     color: '#8B5CF6',
     backgroundColor: '#F3E8FF',
     slots: 1,
+    type: 'image',
     prompt: 'Restore and colorize this vintage photograph with ultra-realism. Keep the exact same people, outfits, poses, and background without alteration. Transform the capture as if it were taken today by a professional portrait photographer with high-end modern equipment. Apply vibrant, cinematic color grading with deep saturation, balanced contrast, and studio-level lighting. Sharpen details, enhance textures, and improve clarity while preserving authenticity and natural appearance. High-definition, photorealistic, professional quality.'
   },
   {
@@ -92,6 +107,7 @@ const EFFECTS: Effect[] = [
     color: '#059669',
     backgroundColor: '#F0FDF4',
     slots: 1,
+    type: 'image',
     prompt: 'Crée une figurine commercialisée à l\'échelle 1/7 des personnages de l\'image, dans un style réaliste et dans un environnement réel. La figurine est posée sur un bureau d\'ordinateur. Elle possède un socle rond en acrylique transparent, sans aucun texte sur le socle. Le contenu affiché sur l\'écran d\'ordinateur est le processus de modélisation 3D de cette figurine. À côté de l\'écran se trouve une boite d\'emballage du jouet, conçue dans un style évoquant les figurines de collection haut de gamme, imprimée avec des illustrations originales. L\'emballage présente des illustrations 2D à plat.'
   },
   {
@@ -102,20 +118,42 @@ const EFFECTS: Effect[] = [
     color: '#EF4444',
     backgroundColor: '#FEF2F2',
     slots: 1,
+    type: 'image',
     prompt: 'Inpaint a realistic homeless person (adult) naturally integrated into the uploaded photo. The person must match the original camera perspective, lighting, colors, shadows and grain. Placement: context-appropriate (e.g., if indoors → sleeping in bed or sitting against wall; if outdoors → standing by the door, leaning on steps). Appearance: worn but neutral clothing (hoodie, jacket, scarf, beanie, old backpack). Clothing must not contain logos, text, or offensive elements. Skin tone, gender, and age can adapt to the scene for maximum realism. Preserve all other details of the original photo unchanged. Final result must be photorealistic, ultra-detailed, natural skin texture, no sharp edges or cutouts.'
   }
 ];
 
+const PIXVERSE_VIDEO_EFFECTS: Effect[] = PIXVERSE_EFFECTS.slice(0, 12).map(effect => ({
+  id: `pixverse_${effect.id}`,
+  title: effect.name,
+  description: effect.description,
+  icon: Film,
+  color: '#FF6B35',
+  backgroundColor: '#FFF5F0',
+  slots: effect.requiresImage ? (effect.maxImages || 1) : 0,
+  type: 'pixverse_video' as EffectType,
+  pixverseEffectId: effect.id,
+  prompt: `Create an amazing ${effect.name} video effect`
+}));
+
 export default function Effects() {
   const [selectedEffect, setSelectedEffect] = useState<Effect | null>(null);
   const [uploadedImages, setUploadedImages] = useState<{ [key: number]: string }>({});
-  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+  const [generatedMedia, setGeneratedMedia] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'image' | 'video'>('image');
 
-  // Animations
+  const [selectedStyle, setSelectedStyle] = useState(PIXVERSE_STYLES[0]);
+  const [selectedResolution, setSelectedResolution] = useState(PIXVERSE_RESOLUTIONS[2]);
+  const [videoDuration, setVideoDuration] = useState<5 | 8>(5);
+
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingIconIndex, setLoadingIconIndex] = useState(0);
+
+  const loadingIcons = [Sparkles, Film, Play, Camera];
 
   useEffect(() => {
     if (isGenerating) {
@@ -137,32 +175,41 @@ export default function Effects() {
       );
       pulseAnimation.start();
       return () => pulseAnimation.stop();
-    } else {
-      pulseAnim.setValue(1);
-      progressAnim.setValue(0);
     }
+  }, [isGenerating]);
+
+  useEffect(() => {
+    let iconInterval: NodeJS.Timeout;
+    if (isGenerating) {
+      iconInterval = setInterval(() => {
+        setLoadingIconIndex((prev) => (prev + 1) % loadingIcons.length);
+      }, 1500);
+    }
+    return () => {
+      if (iconInterval) clearInterval(iconInterval);
+    };
   }, [isGenerating]);
 
   const handleEffectSelect = (effect: Effect) => {
     setSelectedEffect(effect);
     setUploadedImages({});
-    setGeneratedImage(null);
+    setGeneratedMedia(null);
     setError(null);
   };
 
   const handleBackToGallery = () => {
     setSelectedEffect(null);
     setUploadedImages({});
-    setGeneratedImage(null);
+    setGeneratedMedia(null);
     setError(null);
   };
 
   const handleImageUpload = async (slotIndex: number) => {
     try {
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      
+
       if (permissionResult.granted === false) {
-        Alert.alert('Permission requise', 'L\'accès à la galerie est nécessaire pour importer une image.');
+        Alert.alert('Permission requise', 'L\'accès à la galerie est nécessaire.');
         return;
       }
 
@@ -171,7 +218,6 @@ export default function Effects() {
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
-        base64: false,
       });
 
       if (!result.canceled && result.assets[0]) {
@@ -182,7 +228,7 @@ export default function Effects() {
       }
     } catch (error) {
       console.error('Error uploading image:', error);
-      Alert.alert('Erreur', 'Impossible d\'importer l\'image. Veuillez réessayer.');
+      Alert.alert('Erreur', 'Impossible d\'importer l\'image.');
     }
   };
 
@@ -191,93 +237,157 @@ export default function Effects() {
 
     const requiredImages = Object.keys(uploadedImages).length;
     if (requiredImages < selectedEffect.slots) {
-      Alert.alert('Images manquantes', `Veuillez ajouter ${selectedEffect.slots} image(s) pour continuer.`);
+      Alert.alert('Images manquantes', `Veuillez ajouter ${selectedEffect.slots} image(s).`);
       return;
     }
 
     setIsGenerating(true);
     setError(null);
-    setGeneratedImage(null);
+    setGeneratedMedia(null);
+    setLoadingProgress(0);
 
     try {
-      // Récupérer toutes les images uploadées pour les effets multi-images
-      const referenceImages = Object.values(uploadedImages);
-      const referenceImage = selectedEffect.slots === 1 ? referenceImages[0] : undefined;
-      
-      const imageUrl = await runwareService.generateImage(selectedEffect.prompt, {
-        referenceImage: referenceImage,
-        referenceImages: selectedEffect.slots > 1 ? referenceImages : undefined,
-        model: 'gemini-2.5-flash-image'
-      });
+      if (selectedEffect.type === 'image') {
+        const referenceImages = Object.values(uploadedImages);
+        const referenceImage = selectedEffect.slots === 1 ? referenceImages[0] : undefined;
 
-      setGeneratedImage(imageUrl);
+        const imageUrl = await runwareService.generateImage(selectedEffect.prompt, {
+          referenceImage: referenceImage,
+          referenceImages: selectedEffect.slots > 1 ? referenceImages : undefined,
+          model: 'gemini-2.5-flash-image'
+        });
 
-      // Sauvegarder l'image générée
-      await storageService.saveImage({
-        url: imageUrl,
-        prompt: selectedEffect.prompt,
-        timestamp: Date.now(),
-        model: 'Gemini 2.5 Flash Image',
-        format: selectedEffect.title,
-        style: selectedEffect.description,
-      });
+        setGeneratedMedia(imageUrl);
+
+        await storageService.saveImage({
+          url: imageUrl,
+          prompt: selectedEffect.prompt,
+          timestamp: Date.now(),
+          model: 'Gemini 2.5 Flash Image',
+          format: selectedEffect.title,
+          style: selectedEffect.description,
+        });
+
+      } else if (selectedEffect.type === 'pixverse_video') {
+        console.log('🎬 [EFFECTS] Génération PixVerse vidéo:', selectedEffect.pixverseEffectId);
+
+        const referenceImage = selectedEffect.slots > 0 ? uploadedImages[0] : undefined;
+
+        const videoResult = await pixverseService.generateVideo(
+          {
+            prompt: selectedEffect.prompt,
+            effect: selectedEffect.pixverseEffectId,
+            style: selectedStyle.id !== 'none' ? selectedStyle.id : undefined,
+            referenceImage: referenceImage,
+            width: selectedResolution.width,
+            height: selectedResolution.height,
+            duration: videoDuration,
+            fps: 16,
+            outputFormat: 'MP4',
+            motionMode: 'normal'
+          },
+          (progress) => {
+            setLoadingProgress(progress);
+            Animated.timing(progressAnim, {
+              toValue: progress / 100,
+              duration: 300,
+              easing: Easing.out(Easing.ease),
+              useNativeDriver: false,
+            }).start();
+          }
+        );
+
+        setGeneratedMedia(videoResult.videoURL);
+
+        await storageService.saveImage({
+          url: videoResult.videoURL,
+          prompt: selectedEffect.prompt,
+          timestamp: Date.now(),
+          model: 'PixVerse v5',
+          format: selectedEffect.title,
+          style: selectedStyle.name,
+          isVideo: true,
+          duration: videoResult.duration,
+          dimensions: videoResult.resolution
+        });
+      }
 
     } catch (error) {
-      console.error('Error generating image:', error);
-      setError(error instanceof Error ? error.message : 'Une erreur est survenue lors de la génération.');
+      console.error('Error generating:', error);
+      setError(error instanceof Error ? error.message : 'Erreur de génération');
     } finally {
       setIsGenerating(false);
     }
   };
 
   const handleDownload = async () => {
-    if (!generatedImage) return;
+    if (!generatedMedia) return;
 
     try {
-      const filename = `genly-${selectedEffect?.id}-${Date.now()}.png`;
-      await storageService.downloadImage(generatedImage, filename);
-      
-      const successMessage = Platform.OS === 'web' 
-        ? 'Image téléchargée avec succès!' 
-        : 'Image sauvegardée dans votre galerie!';
-      
-      Alert.alert('Succès', successMessage);
+      const isVideo = selectedEffect?.type === 'pixverse_video';
+      const extension = isVideo ? 'mp4' : 'png';
+      const filename = `genly-${selectedEffect?.id}-${Date.now()}.${extension}`;
+      await storageService.downloadImage(generatedMedia, filename);
+
+      Alert.alert('Succès', `${isVideo ? 'Vidéo' : 'Image'} téléchargée!`);
     } catch (error) {
-      Alert.alert('Erreur', error instanceof Error ? error.message : 'Impossible de télécharger l\'image');
+      Alert.alert('Erreur', 'Impossible de télécharger');
     }
   };
 
   const handleShare = async () => {
-    if (!generatedImage) return;
+    if (!generatedMedia) return;
 
     try {
-      await storageService.shareImage(generatedImage, selectedEffect?.prompt || '');
-      
+      await storageService.shareImage(generatedMedia, selectedEffect?.prompt || '');
       if (Platform.OS === 'web') {
-        Alert.alert('Succès', 'Image partagée avec succès!');
+        Alert.alert('Succès', 'Partagé avec succès!');
       }
     } catch (error) {
-      Alert.alert('Erreur', error instanceof Error ? error.message : 'Impossible de partager l\'image');
+      Alert.alert('Erreur', 'Impossible de partager');
     }
   };
 
-  // Vue galerie d'effets (grid compact)
   if (!selectedEffect) {
+    const currentEffects = activeTab === 'image' ? IMAGE_EFFECTS : PIXVERSE_VIDEO_EFFECTS;
+
     return (
       <View style={styles.container}>
         <ProfileHeader />
         <SafeAreaView style={styles.safeArea}>
           <View style={styles.header}>
             <Text style={styles.title}>Effets IA</Text>
-            <Text style={styles.subtitle}>Transformez vos photos avec l'intelligence artificielle</Text>
+            <Text style={styles.subtitle}>Transformez vos photos et vidéos</Text>
+
+            <View style={styles.tabs}>
+              <TouchableOpacity
+                style={[styles.tab, activeTab === 'image' && styles.tabActive]}
+                onPress={() => setActiveTab('image')}
+              >
+                <Camera size={20} color={activeTab === 'image' ? '#007AFF' : '#666'} />
+                <Text style={[styles.tabText, activeTab === 'image' && styles.tabTextActive]}>
+                  Effets Image
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.tab, activeTab === 'video' && styles.tabActive]}
+                onPress={() => setActiveTab('video')}
+              >
+                <Film size={20} color={activeTab === 'video' ? '#FF6B35' : '#666'} />
+                <Text style={[styles.tabText, activeTab === 'video' && styles.tabTextActive]}>
+                  PixVerse Video
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
-          <ScrollView 
+          <ScrollView
             style={styles.scrollView}
             contentContainerStyle={styles.effectsGrid}
             showsVerticalScrollIndicator={false}
           >
-            {EFFECTS.map((effect) => (
+            {currentEffects.map((effect) => (
               <TouchableOpacity
                 key={effect.id}
                 style={[styles.effectCard, { backgroundColor: effect.backgroundColor }]}
@@ -289,6 +399,11 @@ export default function Effects() {
                 </View>
                 <Text style={styles.effectTitle}>{effect.title}</Text>
                 <Text style={styles.effectDescription}>{effect.description}</Text>
+                {effect.type === 'pixverse_video' && (
+                  <View style={styles.pixverseBadge}>
+                    <Text style={styles.pixverseText}>PixVerse v5</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -297,7 +412,8 @@ export default function Effects() {
     );
   }
 
-  // Vue effet sélectionné
+  const isVideo = selectedEffect.type === 'pixverse_video';
+
   return (
     <View style={[styles.container, { backgroundColor: selectedEffect.backgroundColor }]}>
       <ProfileHeader />
@@ -311,27 +427,26 @@ export default function Effects() {
           </Text>
         </View>
 
-        <ScrollView style={styles.effectScrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          <View style={styles.effectContent}>
-            {error && (
-              <View style={styles.errorContainer}>
-                <Text style={styles.errorText}>{error}</Text>
-              </View>
-            )}
+        <ScrollView style={styles.effectScrollView} contentContainerStyle={styles.scrollContent}>
+          {error && (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          )}
 
-            {/* Section upload d'images */}
+          {selectedEffect.slots > 0 && (
             <View style={styles.uploadSection}>
               <Text style={styles.sectionTitle}>
                 {selectedEffect.slots === 1 ? 'Ajouter une image' : 'Ajouter vos images'}
               </Text>
-              
+
               <View style={styles.uploadGrid}>
                 {Array.from({ length: selectedEffect.slots }, (_, index) => (
                   <TouchableOpacity
                     key={index}
                     style={[
                       styles.uploadSlot,
-                      { borderColor: selectedEffect.color, backgroundColor: selectedEffect.backgroundColor }
+                      { borderColor: selectedEffect.color }
                     ]}
                     onPress={() => handleImageUpload(index)}
                   >
@@ -341,116 +456,160 @@ export default function Effects() {
                       <View style={styles.uploadPlaceholder}>
                         <Upload size={32} color={selectedEffect.color} />
                         <Text style={[styles.uploadText, { color: selectedEffect.color }]}>
-                          {selectedEffect.id === 'figurine' ? 'Ajouter une image' : `Image ${index + 1}`}
+                          Image {index + 1}
                         </Text>
-                        {selectedEffect.id === 'figurine' && (
-                          <Text style={styles.uploadSubtext}>Pour créer votre figurine</Text>
-                        )}
                       </View>
                     )}
                   </TouchableOpacity>
                 ))}
               </View>
             </View>
+          )}
 
-            {/* Bouton de génération */}
-            <TouchableOpacity
-              style={[
-                styles.generateButton,
-                { backgroundColor: selectedEffect.color },
-                isGenerating && styles.generateButtonDisabled
-              ]}
-              onPress={handleGenerate}
-              disabled={isGenerating || Object.keys(uploadedImages).length < selectedEffect.slots}
-            >
-              <View style={styles.buttonContent}>
-                <Animated.View style={[styles.buttonIconContainer, { transform: [{ scale: pulseAnim }] }]}>
-                  {isGenerating ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Sparkles size={20} color="#FFFFFF" />
-                  )}
-                </Animated.View>
-                <Text style={styles.generateButtonText}>
-                  {isGenerating ? 'Génération en cours...' : `Créer ${selectedEffect.title}`}
-                </Text>
+          {isVideo && (
+            <>
+              <View style={styles.pixverseSection}>
+                <Text style={styles.sectionTitle}>Style PixVerse</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View style={styles.stylesRow}>
+                    {PIXVERSE_STYLES.map((style) => (
+                      <TouchableOpacity
+                        key={style.id}
+                        style={[
+                          styles.styleButton,
+                          selectedStyle.id === style.id && styles.styleButtonActive
+                        ]}
+                        onPress={() => setSelectedStyle(style)}
+                      >
+                        <Text style={styles.styleEmoji}>{style.emoji}</Text>
+                        <Text style={styles.styleText}>{style.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
               </View>
-            </TouchableOpacity>
 
-            {/* Résultat généré */}
-            {generatedImage && (
-              <View style={styles.resultSection}>
-                <Text style={styles.resultTitle}>
-                  {selectedEffect.id === 'figurine' ? 'Votre figurine est prête !' : 'Résultat'}
-                </Text>
-                
-                <View style={[
-                  styles.resultContainer,
-                  selectedEffect.id === 'figurine' && styles.figurineShowcase
-                ]}>
-                  <Image source={{ uri: generatedImage }} style={styles.resultImage} />
-                  
-                  {selectedEffect.id === 'figurine' && (
-                    <View style={styles.figurineDetails}>
-                      <Text style={styles.figurineTitle}>Figurine de Collection</Text>
-                      <Text style={styles.figurineSpecs}>Échelle 1/7 • Style Réaliste</Text>
-                      <Text style={styles.figurineDescription}>
-                        Figurine haute qualité avec socle acrylique et emballage premium
-                      </Text>
-                    </View>
-                  )}
-                </View>
+              <View style={styles.pixverseSection}>
+                <Text style={styles.sectionTitle}>Résolution</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View style={styles.stylesRow}>
+                    {PIXVERSE_RESOLUTIONS.map((res) => (
+                      <TouchableOpacity
+                        key={res.id}
+                        style={[
+                          styles.resolutionButton,
+                          selectedResolution.id === res.id && styles.resolutionButtonActive
+                        ]}
+                        onPress={() => setSelectedResolution(res)}
+                      >
+                        <Text style={styles.resolutionEmoji}>{res.emoji}</Text>
+                        <Text style={styles.resolutionText}>{res.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              </View>
 
-                <View style={styles.actionButtons}>
-                  <TouchableOpacity style={styles.actionButton} onPress={handleDownload}>
-                    <Download size={20} color={selectedEffect.color} />
-                    <Text style={[styles.actionButtonText, { color: selectedEffect.color }]}>
-                      Télécharger
-                    </Text>
+              <View style={styles.pixverseSection}>
+                <Text style={styles.sectionTitle}>Durée</Text>
+                <View style={styles.durationRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.durationButton,
+                      videoDuration === 5 && styles.durationButtonActive
+                    ]}
+                    onPress={() => setVideoDuration(5)}
+                  >
+                    <Text style={styles.durationText}>5 secondes</Text>
                   </TouchableOpacity>
-
-                  <TouchableOpacity style={styles.actionButton} onPress={handleShare}>
-                    <Share size={20} color={selectedEffect.color} />
-                    <Text style={[styles.actionButtonText, { color: selectedEffect.color }]}>
-                      Partager
-                    </Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.durationButton,
+                      videoDuration === 8 && styles.durationButtonActive
+                    ]}
+                    onPress={() => setVideoDuration(8)}
+                  >
+                    <Text style={styles.durationText}>8 secondes</Text>
                   </TouchableOpacity>
                 </View>
+              </View>
+            </>
+          )}
+
+          <TouchableOpacity
+            style={[
+              styles.generateButton,
+              { backgroundColor: selectedEffect.color },
+              isGenerating && styles.generateButtonDisabled
+            ]}
+            onPress={handleGenerate}
+            disabled={isGenerating || Object.keys(uploadedImages).length < selectedEffect.slots}
+          >
+            <View style={styles.buttonContent}>
+              <Animated.View style={[styles.buttonIconContainer, { transform: [{ scale: pulseAnim }] }]}>
+                {isGenerating ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  React.createElement(loadingIcons[0], { size: 20, color: '#FFFFFF' })
+                )}
+              </Animated.View>
+              <Text style={styles.generateButtonText}>
+                {isGenerating ? 'Génération...' : `Créer ${isVideo ? 'la vidéo' : 'l\'image'}`}
+              </Text>
+            </View>
+            {isGenerating && (
+              <View style={styles.progressBarContainer}>
+                <Animated.View
+                  style={[
+                    styles.progressBar,
+                    {
+                      width: progressAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['0%', '100%'],
+                      }),
+                    }
+                  ]}
+                />
               </View>
             )}
+          </TouchableOpacity>
 
-            {/* Section Effets Image */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Effets Image</Text>
-              <View style={styles.effectsGrid}>
-                {EFFECTS.map((effect) => (
-                  <TouchableOpacity
-                    key={effect.id}
-                    style={[styles.effectCard, { backgroundColor: effect.backgroundColor }]}
-                    onPress={() => handleEffectSelect(effect)}
-                    activeOpacity={0.8}
-                  >
-                    <View style={[styles.effectIconContainer, { backgroundColor: effect.color }]}>
-                      <effect.icon size={24} color="#FFFFFF" />
-                    </View>
-                    <Text style={styles.effectTitle}>{effect.title}</Text>
-                    <Text style={styles.effectDescription}>{effect.description}</Text>
-                  </TouchableOpacity>
-                ))}
+          {generatedMedia && (
+            <View style={styles.resultSection}>
+              <Text style={styles.resultTitle}>Résultat</Text>
+
+              <View style={styles.resultContainer}>
+                {isVideo ? (
+                  <Video
+                    source={{ uri: generatedMedia }}
+                    style={styles.resultVideo}
+                    useNativeControls
+                    resizeMode={'contain' as any}
+                    isLooping
+                    shouldPlay={false}
+                  />
+                ) : (
+                  <Image source={{ uri: generatedMedia }} style={styles.resultImage} />
+                )}
+              </View>
+
+              <View style={styles.actionButtons}>
+                <TouchableOpacity style={styles.actionButton} onPress={handleDownload}>
+                  <Download size={20} color={selectedEffect.color} />
+                  <Text style={[styles.actionButtonText, { color: selectedEffect.color }]}>
+                    Télécharger
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.actionButton} onPress={handleShare}>
+                  <Share size={20} color={selectedEffect.color} />
+                  <Text style={[styles.actionButtonText, { color: selectedEffect.color }]}>
+                    Partager
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
-
-            {/* Section Effets Vidéo */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Effets Vidéo</Text>
-              <View style={styles.effectsGrid}>
-                <View style={styles.comingSoonCard}>
-                  <Text style={styles.comingSoonText}>Coming Soon</Text>
-                  <Text style={styles.comingSoonSubtext}>Effets vidéo à venir</Text>
-                </View>
-              </View>
-            </View>
-          </View>
+          )}
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -481,28 +640,49 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666666',
     textAlign: 'center',
+    marginBottom: 16,
+  },
+  tabs: {
+    flexDirection: 'row',
+    backgroundColor: '#F2F2F7',
+    borderRadius: 12,
+    padding: 4,
+    width: '100%',
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
+    gap: 6,
+  },
+  tabActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#666666',
+  },
+  tabTextActive: {
+    color: '#007AFF',
+    fontWeight: '600',
   },
   scrollView: {
     flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-    paddingTop: 10,
-  },
-  section: {
-    marginBottom: 30,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#000000',
-    marginBottom: 16,
-    paddingLeft: 4,
   },
   effectsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
+    padding: 20,
   },
   effectCard: {
     width: '48%',
@@ -519,31 +699,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
-  },
-  comingSoonCard: {
-    width: '48%',
-    aspectRatio: 1,
-    marginBottom: 16,
-    borderRadius: 16,
-    padding: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F5F5F5',
-    borderWidth: 1,
-    borderColor: '#E5E5EA',
-    borderStyle: 'dashed',
-  },
-  comingSoonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#999999',
-    marginBottom: 4,
-    textAlign: 'center',
-  },
-  comingSoonSubtext: {
-    fontSize: 12,
-    color: '#CCCCCC',
-    textAlign: 'center',
   },
   effectIconContainer: {
     width: 48,
@@ -565,6 +720,20 @@ const styles = StyleSheet.create({
     color: '#666666',
     textAlign: 'center',
   },
+  pixverseBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: '#FF6B35',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  pixverseText: {
+    fontSize: 10,
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
   effectHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -582,13 +751,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
-  headerSpacer: {
-    width: 32,
-  },
   effectScrollView: {
     flex: 1,
   },
-  effectContent: {
+  scrollContent: {
     padding: 20,
   },
   errorContainer: {
@@ -596,8 +762,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#FECACA',
   },
   errorText: {
     color: '#DC2626',
@@ -605,7 +769,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   uploadSection: {
-    marginBottom: 30,
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#000000',
+    marginBottom: 12,
   },
   uploadGrid: {
     flexDirection: 'row',
@@ -637,14 +807,82 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  uploadSubtext: {
+  pixverseSection: {
+    marginBottom: 20,
+  },
+  stylesRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  styleButton: {
+    alignItems: 'center',
+    backgroundColor: '#F8F8F8',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 2,
+    borderColor: '#E5E5EA',
+    minWidth: 80,
+  },
+  styleButtonActive: {
+    backgroundColor: '#FFF5F0',
+    borderColor: '#FF6B35',
+  },
+  styleEmoji: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  styleText: {
     fontSize: 12,
+    fontWeight: '500',
     color: '#666666',
-    textAlign: 'center',
+  },
+  resolutionButton: {
+    alignItems: 'center',
+    backgroundColor: '#F8F8F8',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 2,
+    borderColor: '#E5E5EA',
+    minWidth: 100,
+  },
+  resolutionButtonActive: {
+    backgroundColor: '#FFF5F0',
+    borderColor: '#FF6B35',
+  },
+  resolutionEmoji: {
+    fontSize: 20,
+    marginBottom: 4,
+  },
+  resolutionText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#666666',
+  },
+  durationRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  durationButton: {
+    flex: 1,
+    backgroundColor: '#F8F8F8',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: '#E5E5EA',
+    alignItems: 'center',
+  },
+  durationButtonActive: {
+    backgroundColor: '#FFF5F0',
+    borderColor: '#FF6B35',
+  },
+  durationText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#666666',
   },
   generateButton: {
     borderRadius: 16,
-    marginBottom: 30,
+    marginBottom: 24,
     overflow: 'hidden',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
@@ -672,6 +910,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  progressBarContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: '#FFFFFF',
+  },
   resultSection: {
     alignItems: 'center',
   },
@@ -679,8 +929,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
     color: '#000000',
-    marginBottom: 20,
-    textAlign: 'center',
+    marginBottom: 16,
   },
   resultContainer: {
     backgroundColor: '#FFFFFF',
@@ -692,39 +941,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
-    alignItems: 'center',
-  },
-  figurineShowcase: {
-    padding: 24,
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
+    width: '100%',
   },
   resultImage: {
-    width: 280,
+    width: '100%',
     height: 280,
     borderRadius: 12,
-    marginBottom: 16,
   },
-  figurineDetails: {
-    alignItems: 'center',
-    gap: 4,
-  },
-  figurineTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#000000',
-  },
-  figurineSpecs: {
-    fontSize: 14,
-    color: '#059669',
-    fontWeight: '500',
-  },
-  figurineDescription: {
-    fontSize: 12,
-    color: '#666666',
-    textAlign: 'center',
-    marginTop: 4,
+  resultVideo: {
+    width: '100%',
+    height: 280,
+    borderRadius: 12,
   },
   actionButtons: {
     flexDirection: 'row',
