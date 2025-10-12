@@ -348,6 +348,12 @@ export default function VideoGenerator() {
       if (selectedQuality.id === 'max') {
         console.log('🚀 [VIDEO] Génération Sora-2 commencée');
         const aspectRatio = (selectedVideoFormat as any).aspectRatio || '16:9';
+        console.log('📝 [VIDEO] Paramètres Sora-2:', {
+          prompt: prompt.substring(0, 100),
+          duration: videoDuration,
+          aspectRatio: aspectRatio
+        });
+
         const result = await sora2Service.generateVideo(
           {
             prompt: prompt,
@@ -364,13 +370,37 @@ export default function VideoGenerator() {
             }).start();
           }
         );
-        console.log('✅ [VIDEO] Résultat Sora-2 reçu:', {
-          hasVideoUrl: !!result.videoUrl,
-          videoUrl: result.videoUrl?.substring(0, 100),
-          taskId: result.taskId,
-          duration: result.duration
-        });
+
+        console.log('✅ [VIDEO] Résultat Sora-2 reçu:');
+        console.log('  - Type:', typeof result);
+        console.log('  - Clés:', Object.keys(result));
+        console.log('  - result.videoUrl:', result.videoUrl);
+        console.log('  - result.videoUrl type:', typeof result.videoUrl);
+        console.log('  - result.videoUrl length:', result.videoUrl?.length || 0);
+        console.log('  - result.videoUrl preview:', result.videoUrl?.substring(0, 100) || 'null');
+        console.log('  - result.taskId:', result.taskId);
+        console.log('  - result.duration:', result.duration);
+        console.log('  - result.source:', (result as any).source);
+        console.log('  - Objet complet:', JSON.stringify(result, null, 2));
+
+        if (!result || !result.videoUrl) {
+          console.error('❌ [VIDEO] Résultat Sora-2 invalide - pas de videoUrl');
+          console.error('❌ [VIDEO] Résultat complet:', result);
+          throw new Error('Sora-2: URL de vidéo manquante dans le résultat');
+        }
+
+        if (typeof result.videoUrl !== 'string') {
+          console.error('❌ [VIDEO] videoUrl n\'est pas une string:', typeof result.videoUrl);
+          throw new Error('Sora-2: URL de vidéo invalide');
+        }
+
+        if (!result.videoUrl.startsWith('http')) {
+          console.error('❌ [VIDEO] URL de vidéo malformée:', result.videoUrl);
+          throw new Error('Sora-2: URL de vidéo ne commence pas par http');
+        }
+
         videoUrl = result.videoUrl;
+        console.log('✅ [VIDEO] videoUrl assigné:', videoUrl);
       } else {
         videoUrl = await videoService.current!.generateVideo({
           prompt: prompt,
@@ -391,7 +421,12 @@ export default function VideoGenerator() {
         });
       }
 
-      console.log('📹 [VIDEO] URL vidéo finale:', videoUrl);
+      console.log('📹 [VIDEO] URL vidéo finale:', {
+        videoUrl: videoUrl,
+        videoUrlLength: videoUrl?.length || 0,
+        videoUrlPreview: videoUrl?.substring(0, 100) || 'null',
+        isValidUrl: videoUrl?.startsWith('http') || false
+      });
       console.log('💾 [VIDEO] Création objet vidéo pour sauvegarde');
 
       const newVideo: GeneratedVideo = {
@@ -404,10 +439,25 @@ export default function VideoGenerator() {
         referenceImage: referenceImagePreview || undefined,
       };
 
-      console.log('📺 [VIDEO] Affichage vidéo dans UI');
-      setGeneratedVideo(newVideo);
+      console.log('📺 [VIDEO] Création objet vidéo pour affichage:');
+      console.log('  - url:', newVideo.url);
+      console.log('  - prompt:', newVideo.prompt);
+      console.log('  - duration:', newVideo.duration);
+      console.log('  - model:', newVideo.model);
+      console.log('  - taskUUID:', newVideo.taskUUID);
 
-      console.log('💾 [VIDEO] Sauvegarde dans galerie...');
+      setGeneratedVideo(newVideo);
+      console.log('✅ [VIDEO] Vidéo définie dans state React');
+
+      console.log('💾 [VIDEO] Préparation sauvegarde galerie:', {
+        url: videoUrl,
+        prompt: prompt.substring(0, 50),
+        model: modelName,
+        duration: videoDuration,
+        dimensions: `${videoWidth}x${videoHeight}`,
+        isVideo: true
+      });
+
       await storageService.saveImage({
         url: videoUrl,
         prompt: prompt,
@@ -421,7 +471,9 @@ export default function VideoGenerator() {
         videoWidth: videoWidth,
         videoHeight: videoHeight,
       });
+
       console.log('✅ [VIDEO] Vidéo sauvegardée dans galerie');
+      console.log('🎉 [VIDEO] SUCCÈS COMPLET - Génération Sora-2 terminée');
 
     } catch (error) {
       console.error('❌ [VIDEO] Erreur de génération:', error);
