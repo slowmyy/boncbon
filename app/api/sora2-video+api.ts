@@ -138,40 +138,93 @@ async function pollForSora2Video(statusUrl: string, apiKey: string): Promise<str
 
     try {
       const statusRes = await fetch(statusUrl, {
-        headers: { 'Authorization': `Bearer ${apiKey}` }
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Accept': 'application/json, text/plain, */*'
+        }
       });
 
-      if (statusRes.ok) {
-        const text = await statusRes.text();
-        console.log(`📊 [SORA2] Response text length: ${text.length}`);
-
-        const highQualityMatch = text.match(/High-quality video generated[\s\S]*?(https?:\/\/[^\s\]]+\.mp4)/i);
-        if (highQualityMatch) {
-          const videoUrl = highQualityMatch[1];
-          console.log('✅ [SORA2] URL vidéo HQ trouvée:', videoUrl);
-          return videoUrl;
-        }
-
-        const anyMp4Match = text.match(/https?:\/\/[^\s\]]+\.mp4/i);
-        if (anyMp4Match) {
-          const videoUrl = anyMp4Match[0];
-          console.log('✅ [SORA2] URL vidéo trouvée (fallback):', videoUrl);
-          return videoUrl;
-        }
-
-        console.log('⏳ [SORA2] Vidéo pas encore prête...');
-      } else {
+      if (!statusRes.ok) {
         console.warn(`⚠️ [SORA2] Status ${statusRes.status}, retry...`);
+        await new Promise(r => setTimeout(r, pollInterval));
+        continue;
       }
 
+      const contentType = statusRes.headers.get('content-type');
+      console.log(`📋 [SORA2] Content-Type: ${contentType}`);
+
+      if (contentType?.includes('application/json')) {
+        const jsonData = await statusRes.json();
+        console.log('📊 [SORA2] JSON Response:', JSON.stringify(jsonData, null, 2));
+
+        const videoUrl =
+          jsonData.output?.video_url ||
+          jsonData.output?.url ||
+          jsonData.video_url ||
+          jsonData.url ||
+          jsonData.result?.video_url ||
+          jsonData.data?.video_url;
+
+        if (videoUrl && typeof videoUrl === 'string' && videoUrl.startsWith('http')) {
+          console.log('✅ [SORA2] URL vidéo trouvée (JSON):', videoUrl);
+          return videoUrl;
+        }
+
+        const status = jsonData.status || jsonData.state;
+        console.log(`📊 [SORA2] Status: ${status}`);
+
+        if (status === 'failed' || status === 'error') {
+          throw new Error(`Génération échouée: ${jsonData.error || 'Unknown error'}`);
+        }
+
+        if (status !== 'completed' && status !== 'succeeded') {
+          console.log('⏳ [SORA2] En cours...');
+          await new Promise(r => setTimeout(r, pollInterval));
+          continue;
+        }
+      }
+
+      const text = await statusRes.text();
+      console.log(`📊 [SORA2] Text response length: ${text.length}`);
+      console.log(`📝 [SORA2] Text preview: ${text.substring(0, 500)}`);
+
+      const patterns = [
+        /High-quality video generated[\s\S]*?(https?:\/\/[^\s\]"<]+\.mp4)/i,
+        /https?:\/\/[^\s\]"<]+\.mp4/i,
+        /(?:href|src)=["']?(https?:\/\/[^\s"'<>]+\.mp4)/i,
+        /```[\s\S]*?(https?:\/\/[^\s`]+\.mp4)/i,
+        /(?:video_url|videoUrl)["']?\s*:\s*["']?(https?:\/\/[^\s"']+\.mp4)/i
+      ];
+
+      for (const pattern of patterns) {
+        const match = text.match(pattern);
+        if (match) {
+          const videoUrl = match[1] || match[0];
+          const cleanUrl = videoUrl.replace(/[,;)\]}>]+$/, '').trim();
+
+          if (cleanUrl.startsWith('http') && cleanUrl.includes('.mp4')) {
+            console.log('✅ [SORA2] URL vidéo trouvée (text):', cleanUrl);
+            return cleanUrl;
+          }
+        }
+      }
+
+      console.log('⏳ [SORA2] Vidéo pas encore prête (aucune URL trouvée)...');
+
     } catch (pollError) {
-      console.warn('⚠️ [SORA2] Erreur polling (continue):', pollError);
+      console.error('⚠️ [SORA2] Erreur polling:', pollError);
+
+      if (pollError instanceof Error &&
+          (pollError.message.includes('échouée') ||
+           pollError.message.includes('failed'))) {
+        throw pollError;
+      }
     }
 
     await new Promise(r => setTimeout(r, pollInterval));
   }
 
-  throw new Error('Timeout: vidéo non générée après 10 minutes');
+  throw new Error('Timeout: vidéo non récupérée après 10 minutes');
 }
 
 export async function GET(request: Request) {
