@@ -237,11 +237,9 @@ class StorageService {
   async saveImage(image: Omit<StoredImage, 'id'>): Promise<StoredImage> {
     console.log('💾 [STORAGE] Début sauvegarde:', {
       isVideo: image.isVideo,
-      url: image.url?.substring(0, 100) || 'null',
-      urlLength: image.url?.length || 0,
-      prompt: image.prompt?.substring(0, 50),
-      duration: image.duration,
-      model: image.model
+      urlType: image.url?.startsWith('data:') ? 'data-url' :
+               image.url?.startsWith('http') ? 'http' : 'autre',
+      urlLength: image.url?.length || 0
     });
 
     const storedImage: StoredImage = {
@@ -252,17 +250,19 @@ class StorageService {
       duration: image.duration,
     };
 
-    console.log('📦 [STORAGE] Objet créé:', {
-      id: storedImage.id,
-      isVideo: storedImage.isVideo,
-      url: storedImage.url?.substring(0, 100),
-      hasUrl: !!storedImage.url
-    });
+    // ✅ CRITIQUE: Ne JAMAIS stocker les data URLs de vidéos (trop grosses)
+    if (storedImage.isVideo && storedImage.url.startsWith('data:')) {
+      console.error('❌ [STORAGE] Tentative de stocker data URL vidéo - REFUSÉ');
+      throw new Error('Impossible de stocker une vidéo en data URL. Seules les URLs HTTP sont supportées.');
+    }
 
-    const isLargeDataUrl = image.url.startsWith('data:image/') && image.url.length > 5000;
+    // ✅ Pour les IMAGES seulement, on peut stocker les grandes data URLs localement
+    const isLargeDataUrl = !storedImage.isVideo &&
+                           image.url.startsWith('data:image/') &&
+                           image.url.length > 5000;
 
     if (isLargeDataUrl) {
-      console.log('📦 [STORAGE] Grande data URL détectée, sauvegarde locale...');
+      console.log('📦 [STORAGE] Grande data URL image détectée, sauvegarde locale...');
       try {
         if (Platform.OS === 'web') {
           await this.saveImageToIndexedDB(storedImage.id, image.url);
@@ -275,59 +275,71 @@ class StorageService {
         }
       } catch (error) {
         console.error('Error saving large image data:', error);
-        console.warn('Falling back to external URL storage due to quota limits');
+        throw new Error('Impossible de stocker l\'image localement');
       }
     }
 
     if (storedImage.isVideo) {
-      console.log('🎬 [STORAGE] Type VIDÉO détecté, sauvegarde dans VIDEOS_STORAGE_KEY');
+      console.log('🎬 [STORAGE] Type VIDÉO détecté');
 
-      const existingVideos = this.getAllVideos();
-      console.log('📊 [STORAGE] Vidéos existantes:', existingVideos.length);
+      // ✅ Vérifier que l'URL est bien HTTP
+      if (!storedImage.url.startsWith('http://') && !storedImage.url.startsWith('https://')) {
+        console.error('❌ [STORAGE] URL vidéo invalide:', storedImage.url);
+        throw new Error('URL de vidéo invalide - doit être une URL HTTP/HTTPS');
+      }
 
-      const updatedVideos = [storedImage, ...existingVideos].slice(0, this.MAX_VIDEOS);
-      console.log('📊 [STORAGE] Vidéos après ajout:', updatedVideos.length);
+      try {
+        const existingVideos = this.getAllVideos();
+        console.log('📊 [STORAGE] Vidéos existantes:', existingVideos.length);
 
-      if (typeof window !== 'undefined' && window.localStorage) {
-        try {
+        const updatedVideos = [storedImage, ...existingVideos].slice(0, this.MAX_VIDEOS);
+
+        if (typeof window !== 'undefined' && window.localStorage) {
           const jsonString = JSON.stringify(updatedVideos);
-          console.log('💾 [STORAGE] JSON à sauvegarder (length):', jsonString.length);
 
-          localStorage.setItem(this.VIDEOS_STORAGE_KEY, jsonString);
-          console.log('✅ [STORAGE] Vidéo sauvegardée avec succès dans localStorage');
-          console.log('✅ [STORAGE] ID vidéo:', storedImage.id);
+          // ✅ Vérifier la taille avant de stocker
+          const sizeKB = new Blob([jsonString]).size / 1024;
+          console.log('💾 [STORAGE] Taille JSON:', Math.round(sizeKB), 'KB');
 
-          const verification = localStorage.getItem(this.VIDEOS_STORAGE_KEY);
-          if (verification) {
-            console.log('✅ [STORAGE] Vérification: vidéos présentes dans localStorage');
-            const parsedVideos = JSON.parse(verification);
-            console.log('✅ [STORAGE] Nombre de vidéos après vérification:', parsedVideos.length);
-            console.log('✅ [STORAGE] IDs des vidéos:', parsedVideos.map((v: StoredImage) => v.id));
+          if (sizeKB > 2048) {
+            console.warn('⚠️ [STORAGE] JSON trop gros, réduction vidéos');
+            const reducedVideos = updatedVideos.slice(0, 10);
+            localStorage.setItem(this.VIDEOS_STORAGE_KEY, JSON.stringify(reducedVideos));
           } else {
-            console.error('❌ [STORAGE] Vérification échouée: aucune vidéo trouvée');
+            localStorage.setItem(this.VIDEOS_STORAGE_KEY, jsonString);
           }
 
+          console.log('✅ [STORAGE] Vidéo sauvegardée');
           galleryEvents.notifyNewMedia();
-          console.log('📢 [STORAGE] Événement galerie notifié');
+        }
+      } catch (error) {
+        console.error('❌ [STORAGE] Erreur sauvegarde vidéo:', error);
 
-        } catch (error) {
-          console.error('❌ [STORAGE] Erreur sauvegarde vidéo:', error);
+        // Si quota dépassé, nettoyer et réessayer
+        if (error.name === 'QuotaExceededError') {
+          console.warn('⚠️ [STORAGE] Quota dépassé, nettoyage...');
+          this.clearAllVideos();
+
+          // Réessayer avec seulement la nouvelle vidéo
+          try {
+            localStorage.setItem(this.VIDEOS_STORAGE_KEY, JSON.stringify([storedImage]));
+            galleryEvents.notifyNewMedia();
+          } catch (retryError) {
+            throw new Error('Impossible de sauvegarder la vidéo - quota localStorage dépassé');
+          }
+        } else {
           throw error;
         }
-      } else {
-        console.error('❌ [STORAGE] localStorage non disponible');
       }
 
       return storedImage;
     }
 
+    // Gestion des IMAGES classiques
     const existingImages = this.getAllImages();
     const updatedImages = [storedImage, ...existingImages];
-    
-    // Limiter à 5 images maximum pour éviter de surcharger le stockage
     const limitedImages = updatedImages.slice(0, 5);
-    
-    // Clean up old images that were removed from the limit
+
     const removedImages = updatedImages.slice(5);
     for (const removedImage of removedImages) {
       if (removedImage.isLocalRef) {
@@ -338,7 +350,7 @@ class StorageService {
         }
       }
     }
-    
+
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(limitedImages));
@@ -353,29 +365,54 @@ class StorageService {
   }
 
   getAllVideos(): StoredImage[] {
-    console.log('📂 [STORAGE] getAllVideos() appelé');
-
     if (typeof window === 'undefined' || !window.localStorage) {
-      console.error('❌ [STORAGE] localStorage non disponible');
       return [];
     }
 
     try {
       const stored = localStorage.getItem(this.VIDEOS_STORAGE_KEY);
-      console.log('📦 [STORAGE] Données brutes localStorage:', stored ? `${stored.length} chars` : 'null');
 
       if (!stored) {
-        console.log('ℹ️ [STORAGE] Aucune vidéo dans localStorage');
         return [];
       }
 
       const videos = JSON.parse(stored);
-      console.log('✅ [STORAGE] Vidéos parsées:', videos.length);
-      console.log('📊 [STORAGE] IDs des vidéos:', videos.map((v: StoredImage) => v.id));
 
-      return videos;
+      // ✅ Valider que c'est bien un tableau
+      if (!Array.isArray(videos)) {
+        console.error('❌ [STORAGE] Format vidéos invalide, nettoyage...');
+        localStorage.removeItem(this.VIDEOS_STORAGE_KEY);
+        return [];
+      }
+
+      // ✅ Valider que les URLs sont HTTP/HTTPS
+      const validVideos = videos.filter(v => {
+        if (!v.url) {
+          console.warn('⚠️ [STORAGE] Vidéo sans URL supprimée:', v.id);
+          return false;
+        }
+
+        if (!v.url.startsWith('http://') && !v.url.startsWith('https://')) {
+          console.warn('⚠️ [STORAGE] Vidéo avec URL invalide supprimée:', v.id);
+          return false;
+        }
+
+        return true;
+      });
+
+      // Si on a nettoyé des vidéos, sauvegarder
+      if (validVideos.length !== videos.length) {
+        console.log('🧹 [STORAGE] Nettoyage:', videos.length - validVideos.length, 'vidéos invalides supprimées');
+        localStorage.setItem(this.VIDEOS_STORAGE_KEY, JSON.stringify(validVideos));
+      }
+
+      return validVideos;
     } catch (error) {
       console.error('❌ [STORAGE] Erreur chargement vidéos:', error);
+
+      // En cas d'erreur de parsing, nettoyer complètement
+      console.warn('⚠️ [STORAGE] Nettoyage du stockage vidéos corrompu');
+      localStorage.removeItem(this.VIDEOS_STORAGE_KEY);
       return [];
     }
   }
