@@ -3,6 +3,7 @@ import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import { galleryEvents } from './galleryEvents';
+import { supabaseVideoStorage } from './supabaseVideoStorage';
 
 interface StoredImage {
   id: string;
@@ -365,28 +366,44 @@ class StorageService {
   }
 
   getAllVideos(): StoredImage[] {
+    console.log('📥 [STORAGE] getAllVideos appelé');
+
+    let videos: StoredImage[] = [];
+
+    try {
+      const supabaseVideosPromise = supabaseVideoStorage.getAllVideos();
+
+      supabaseVideosPromise.then(supabaseVideos => {
+        console.log('✅ [STORAGE] Vidéos Supabase récupérées:', supabaseVideos.length);
+      }).catch(error => {
+        console.error('❌ [STORAGE] Erreur Supabase:', error);
+      });
+
+      videos = [];
+    } catch (error) {
+      console.error('❌ [STORAGE] Erreur getAllVideos:', error);
+    }
+
     if (typeof window === 'undefined' || !window.localStorage) {
-      return [];
+      return videos;
     }
 
     try {
       const stored = localStorage.getItem(this.VIDEOS_STORAGE_KEY);
 
       if (!stored) {
-        return [];
+        return videos;
       }
 
-      const videos = JSON.parse(stored);
+      const localVideos = JSON.parse(stored);
 
-      // ✅ Valider que c'est bien un tableau
-      if (!Array.isArray(videos)) {
+      if (!Array.isArray(localVideos)) {
         console.error('❌ [STORAGE] Format vidéos invalide, nettoyage...');
         localStorage.removeItem(this.VIDEOS_STORAGE_KEY);
-        return [];
+        return videos;
       }
 
-      // ✅ Valider que les URLs sont HTTP/HTTPS
-      const validVideos = videos.filter(v => {
+      const validVideos = localVideos.filter(v => {
         if (!v.url) {
           console.warn('⚠️ [STORAGE] Vidéo sans URL supprimée:', v.id);
           return false;
@@ -400,24 +417,78 @@ class StorageService {
         return true;
       });
 
-      // Si on a nettoyé des vidéos, sauvegarder
-      if (validVideos.length !== videos.length) {
-        console.log('🧹 [STORAGE] Nettoyage:', videos.length - validVideos.length, 'vidéos invalides supprimées');
+      if (validVideos.length !== localVideos.length) {
+        console.log('🧹 [STORAGE] Nettoyage:', localVideos.length - validVideos.length, 'vidéos invalides supprimées');
         localStorage.setItem(this.VIDEOS_STORAGE_KEY, JSON.stringify(validVideos));
       }
 
-      return validVideos;
+      videos = [...videos, ...validVideos];
     } catch (error) {
-      console.error('❌ [STORAGE] Erreur chargement vidéos:', error);
-
-      // En cas d'erreur de parsing, nettoyer complètement
-      console.warn('⚠️ [STORAGE] Nettoyage du stockage vidéos corrompu');
+      console.error('❌ [STORAGE] Erreur chargement vidéos localStorage:', error);
       localStorage.removeItem(this.VIDEOS_STORAGE_KEY);
-      return [];
     }
+
+    return videos;
   }
 
-  deleteVideo(id: string): void {
+  async getAllVideosAsync(): Promise<StoredImage[]> {
+    console.log('📥 [STORAGE] getAllVideosAsync appelé');
+
+    let videos: StoredImage[] = [];
+
+    try {
+      const supabaseVideos = await supabaseVideoStorage.getAllVideos();
+      console.log('✅ [STORAGE] Vidéos Supabase récupérées:', supabaseVideos.length);
+
+      videos = supabaseVideos.map(v => ({
+        id: v.id,
+        url: v.public_url,
+        prompt: v.prompt,
+        timestamp: new Date(v.created_at).getTime(),
+        model: v.model,
+        isVideo: true,
+        duration: v.duration,
+        videoWidth: v.width,
+        videoHeight: v.height,
+        format: `Vidéo ${v.duration}s`,
+        dimensions: `${v.width}x${v.height}`,
+        style: 'Video Generation',
+      }));
+    } catch (error) {
+      console.error('❌ [STORAGE] Erreur récupération Supabase:', error);
+    }
+
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return videos;
+    }
+
+    try {
+      const stored = localStorage.getItem(this.VIDEOS_STORAGE_KEY);
+      if (stored) {
+        const localVideos = JSON.parse(stored);
+        if (Array.isArray(localVideos)) {
+          const validLocalVideos = localVideos.filter(v =>
+            v.url && (v.url.startsWith('http://') || v.url.startsWith('https://'))
+          );
+          videos = [...videos, ...validLocalVideos];
+        }
+      }
+    } catch (error) {
+      console.error('❌ [STORAGE] Erreur localStorage:', error);
+    }
+
+    videos.sort((a, b) => b.timestamp - a.timestamp);
+    return videos;
+  }
+
+  async deleteVideo(id: string): Promise<void> {
+    try {
+      await supabaseVideoStorage.deleteVideo(id);
+      console.log('✅ [STORAGE] Vidéo Supabase supprimée:', id);
+    } catch (error) {
+      console.error('❌ [STORAGE] Erreur suppression Supabase:', error);
+    }
+
     const videos = this.getAllVideos();
     const filteredVideos = videos.filter(vid => vid.id !== id);
 
@@ -426,7 +497,14 @@ class StorageService {
     }
   }
 
-  clearAllVideos(): void {
+  async clearAllVideos(): Promise<void> {
+    try {
+      await supabaseVideoStorage.clearAllVideos();
+      console.log('✅ [STORAGE] Toutes les vidéos Supabase supprimées');
+    } catch (error) {
+      console.error('❌ [STORAGE] Erreur nettoyage Supabase:', error);
+    }
+
     if (typeof window !== 'undefined' && window.localStorage) {
       localStorage.removeItem(this.VIDEOS_STORAGE_KEY);
     }

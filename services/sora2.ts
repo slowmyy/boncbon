@@ -10,7 +10,10 @@ export interface Sora2VideoResponse {
   taskId: string;
   duration: number;
   source?: string;
+  supabaseId?: string;
 }
+
+import { supabaseVideoStorage } from './supabaseVideoStorage';
 
 export class Sora2Service {
   private apiKey: string;
@@ -92,11 +95,31 @@ export class Sora2Service {
 
         const videoUrl = await this.pollStatusUrl(statusUrl, onProgress);
 
+        console.log('📤 [SORA2] Upload vers Supabase...');
+        if (onProgress) onProgress(85);
+
+        const storedVideo = await supabaseVideoStorage.uploadVideoFromUrl(videoUrl, {
+          prompt: params.prompt,
+          model: 'Sora-2 Normal',
+          duration: params.duration || 10,
+          width: this.getDimensions(params.aspectRatio || '16:9').width,
+          height: this.getDimensions(params.aspectRatio || '16:9').height,
+          metadata: {
+            aspectRatio: params.aspectRatio,
+            taskId: data.id,
+            originalUrl: videoUrl
+          }
+        });
+
+        console.log('✅ [SORA2] Vidéo uploadée sur Supabase:', storedVideo.public_url);
+        if (onProgress) onProgress(100);
+
         return {
-          videoUrl: videoUrl,
+          videoUrl: storedVideo.public_url,
           taskId: data.id || 'sora2-' + Date.now(),
           duration: params.duration || 10,
-          source: 'sora-2-comet-api'
+          source: 'sora-2-comet-api',
+          supabaseId: storedVideo.id
         };
       }
 
@@ -105,13 +128,31 @@ export class Sora2Service {
         const mp4Match = content.match(/https?:\/\/[^\s"]+\.mp4/);
         if (mp4Match) {
           console.log('✅ [SORA2] Vidéo trouvée directement:', mp4Match[0]);
+          if (onProgress) onProgress(85);
+
+          console.log('📤 [SORA2] Upload vers Supabase...');
+          const storedVideo = await supabaseVideoStorage.uploadVideoFromUrl(mp4Match[0], {
+            prompt: params.prompt,
+            model: 'Sora-2 Normal',
+            duration: params.duration || 10,
+            width: this.getDimensions(params.aspectRatio || '16:9').width,
+            height: this.getDimensions(params.aspectRatio || '16:9').height,
+            metadata: {
+              aspectRatio: params.aspectRatio,
+              taskId: data.id,
+              originalUrl: mp4Match[0]
+            }
+          });
+
+          console.log('✅ [SORA2] Vidéo uploadée sur Supabase:', storedVideo.public_url);
           if (onProgress) onProgress(100);
 
           return {
-            videoUrl: mp4Match[0],
+            videoUrl: storedVideo.public_url,
             taskId: data.id || 'sora2-' + Date.now(),
             duration: params.duration || 10,
-            source: 'sora-2-comet-api'
+            source: 'sora-2-comet-api',
+            supabaseId: storedVideo.id
           };
         }
       }

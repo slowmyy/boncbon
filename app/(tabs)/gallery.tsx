@@ -187,8 +187,8 @@ export default function Gallery() {
       const storedImages = storageService.getAllImages();
       console.log('🖼️ [GALLERY] Images chargées:', storedImages.length);
 
-      const storedVideos = storageService.getAllVideos();
-      console.log('🎬 [GALLERY] Vidéos chargées:', storedVideos.length);
+      const storedVideos = await storageService.getAllVideosAsync();
+      console.log('🎬 [GALLERY] Vidéos chargées (async):', storedVideos.length);
 
       if (storedVideos.length > 0) {
         console.log('📊 [GALLERY] Détails vidéos:', storedVideos.map(v => ({
@@ -294,11 +294,11 @@ export default function Gallery() {
         {
           text: 'Supprimer',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
             if (image.isVideo) {
-              storageService.deleteVideo(image.id);
+              await storageService.deleteVideo(image.id);
             } else {
-              storageService.deleteImage(image.id);
+              await storageService.deleteImage(image.id);
             }
             loadMedia();
             if (selectedImage?.id === image.id) {
