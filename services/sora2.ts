@@ -102,16 +102,7 @@ export class Sora2Service {
   }
 
   getDimensions(aspectRatio: string): { width: number; height: number } {
-    switch (aspectRatio) {
-      case '16:9':
-        return { width: 1280, height: 720 };
-      case '9:16':
-        return { width: 720, height: 1280 };
-      case '1:1':
-        return { width: 1024, height: 1024 };
-      default:
-        return { width: 1280, height: 720 };
-    }
+    return { width: 0, height: 0 };
   }
 }
 

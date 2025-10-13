@@ -14,28 +14,20 @@ export async function POST(request: Request) {
     }
 
     const prompt = body?.prompt || '';
-    const duration = body?.duration || 10;
+    const duration = body?.duration || 5;
     const aspectRatio = body?.aspect_ratio || '16:9';
 
-    const resolutionMap: Record<string, string> = {
-      '16:9': '1280x720',
-      '9:16': '720x1280',
-      '1:1': '1024x1024'
-    };
-
-    const resolution = resolutionMap[aspectRatio] || '1280x720';
-
     const requestBody = {
-      model: 'sora-2',
+      model: 'sora-2-turbo',
       prompt: prompt,
+      aspect_ratio: aspectRatio,
       duration: duration,
-      resolution: resolution,
-      style: body?.style || 'realistic'
+      loop: false
     };
 
-    console.log('📡 [SORA2] Envoi requête:', requestBody);
+    console.log('📡 [SORA2] Requête CometAPI:', requestBody);
 
-    const response = await fetch('https://api.cometapi.com/v1/videos', {
+    const response = await fetch('https://api.cometapi.com/v1/generations', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -63,7 +55,7 @@ export async function POST(request: Request) {
     }
 
     const data = await response.json();
-    console.log('📊 [SORA2] Données reçues:', data);
+    console.log('📊 [SORA2] Réponse création:', data);
 
     if (!data.id) {
       console.error('❌ [SORA2] Pas d\'ID dans la réponse');
@@ -77,7 +69,7 @@ export async function POST(request: Request) {
     console.log('✅ [SORA2] Job créé:', jobId);
     console.log('⏳ [SORA2] Début polling...');
 
-    const videoUrl = await pollForVideo(jobId, apiKey);
+    const videoUrl = await pollForSora2Video(jobId, apiKey);
 
     console.log('✅ [SORA2] Vidéo prête:', videoUrl);
     return new Response(
@@ -122,7 +114,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const statusRes = await fetch(`https://api.cometapi.com/v1/videos/${jobId}`, {
+    const statusRes = await fetch(`https://api.cometapi.com/v1/generations/${jobId}`, {
       headers: { 'Authorization': `Bearer ${apiKey}` }
     });
 
@@ -135,11 +127,15 @@ export async function GET(request: Request) {
 
     const statusData = await statusRes.json();
 
+    const videoUrl = statusData.output?.video_url ||
+                     statusData.output?.url ||
+                     statusData.video_url;
+
     return new Response(
       JSON.stringify({
         success: true,
         status: statusData.status,
-        videoUrl: statusData.outputs?.[0] || null,
+        videoUrl: videoUrl || null,
         progress: statusData.progress || 0
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -154,10 +150,10 @@ export async function GET(request: Request) {
   }
 }
 
-async function pollForVideo(jobId: string, apiKey: string): Promise<string> {
-  const maxAttempts = 60;
-  const pollInterval = 5000;
+async function pollForSora2Video(jobId: string, apiKey: string): Promise<string> {
   let attempts = 0;
+  const maxAttempts = 120;
+  const pollInterval = 5000;
 
   console.log(`🔗 [SORA2] Polling job: ${jobId}`);
 
@@ -166,9 +162,12 @@ async function pollForVideo(jobId: string, apiKey: string): Promise<string> {
     console.log(`🔄 [SORA2] Tentative ${attempts}/${maxAttempts}`);
 
     try {
-      const statusRes = await fetch(`https://api.cometapi.com/v1/videos/${jobId}`, {
-        headers: { 'Authorization': `Bearer ${apiKey}` }
-      });
+      const statusRes = await fetch(
+        `https://api.cometapi.com/v1/generations/${jobId}`,
+        {
+          headers: { 'Authorization': `Bearer ${apiKey}` }
+        }
+      );
 
       if (!statusRes.ok) {
         console.warn(`⚠️ [SORA2] Status ${statusRes.status}, continue...`);
@@ -177,16 +176,25 @@ async function pollForVideo(jobId: string, apiKey: string): Promise<string> {
       }
 
       const statusData = await statusRes.json();
-      console.log(`📊 [SORA2] Status: ${statusData.status}, Progress: ${statusData.progress || 0}%`);
+      console.log(`📊 [SORA2] Status: ${statusData.status}`);
 
-      if (statusData.status === 'completed' && statusData.outputs?.[0]) {
-        const videoUrl = statusData.outputs[0];
-        console.log('✅ [SORA2] Vidéo trouvée:', videoUrl);
-        return videoUrl;
+      if (statusData.status === 'succeeded') {
+        const videoUrl = statusData.output?.video_url ||
+                        statusData.output?.url ||
+                        statusData.video_url;
+
+        if (videoUrl) {
+          console.log('✅ [SORA2] Vidéo trouvée:', videoUrl);
+          return videoUrl;
+        } else {
+          console.warn('⚠️ [SORA2] Status succeeded mais pas d\'URL, continue...');
+        }
       }
 
       if (statusData.status === 'failed') {
-        throw new Error('Génération vidéo échouée');
+        const errorMsg = statusData.error?.message || 'Génération vidéo échouée';
+        console.error('❌ [SORA2] Échec:', errorMsg);
+        throw new Error(errorMsg);
       }
 
       console.log('⏳ [SORA2] En cours...');
@@ -201,5 +209,5 @@ async function pollForVideo(jobId: string, apiKey: string): Promise<string> {
     await new Promise(r => setTimeout(r, pollInterval));
   }
 
-  throw new Error('Timeout: vidéo non générée après 5 minutes');
+  throw new Error('Timeout: vidéo non générée après 10 minutes');
 }
