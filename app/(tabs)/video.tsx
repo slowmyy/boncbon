@@ -39,6 +39,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import ProfileHeader from '@/components/ProfileHeader';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { VideoGenerationService } from '@/utils/runware';
+import Sora2Test from '@/components/Sora2Test';
 
 // Generate a valid UUIDv4
 const generateUUIDv4 = (): string => {
@@ -530,6 +531,8 @@ export default function VideoGenerator() {
           </View>
           <Text style={styles.subtitle}>Créez des vidéos IA avec ByteDance</Text>
         </View>
+
+        <Sora2Test />
 
         {/* Note importante sur l'image de référence */}
         <View style={styles.noteContainer}>
