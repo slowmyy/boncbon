@@ -35,7 +35,6 @@ import * as ImagePicker from 'expo-image-picker';
 import { Video as ExpoVideo, ResizeMode } from 'expo-av';
 import { runwareService } from '@/services/runware';
 import { storageService } from '@/services/storage';
-import { sora2Service } from '@/services/sora2';
 import { useFocusEffect } from '@react-navigation/native';
 import ProfileHeader from '@/components/ProfileHeader';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -100,21 +99,6 @@ const VIDEO_QUALITY_OPTIONS = [
       { id: 'landscape', name: 'Paysage', width: 1920, height: 1080, emoji: '🖥️' },
     ]
   },
-  {
-    id: 'max',
-    name: 'Max',
-    emoji: '🚀',
-    description: 'Sora-2 Normal HD',
-    model: 'sora2-normal',
-    modelName: 'Sora-2 Normal',
-    duration: 5,
-    durationOptions: [5, 10],
-    supportedFormats: [
-      { id: 'landscape', name: 'Paysage', width: 1920, height: 1080, emoji: '🖥️', aspectRatio: '16:9' },
-      { id: 'portrait', name: 'Portrait', width: 1080, height: 1920, emoji: '📱', aspectRatio: '9:16' },
-      { id: 'square', name: 'Carré', width: 1080, height: 1080, emoji: '⬜', aspectRatio: '1:1' },
-    ]
-  },
 ];
 
 export default function VideoGenerator() {
@@ -169,10 +153,7 @@ export default function VideoGenerator() {
     if (!isCurrentFormatAvailable && availableVideoFormats.length > 0) {
       setSelectedVideoFormat(availableVideoFormats[0]);
     }
-    if (selectedQuality.id === 'max' && selectedQuality.durationOptions) {
-      setSelectedDuration(selectedQuality.durationOptions[0]);
-    }
-  }, [availableVideoFormats, selectedVideoFormat.id, selectedQuality.id]);
+  }, [availableVideoFormats, selectedVideoFormat.id]);
 
   // Forcer la sélection du modèle Ultra quand une image est importée
   useEffect(() => {
@@ -343,83 +324,23 @@ export default function VideoGenerator() {
         resolution: `${videoWidth}x${videoHeight}`,
       });
 
-      let videoUrl: string;
-
-      if (selectedQuality.id === 'max') {
-        console.log('🚀 [VIDEO] Génération Sora-2 commencée');
-        const aspectRatio = (selectedVideoFormat as any).aspectRatio || '16:9';
-        console.log('📝 [VIDEO] Paramètres Sora-2:', {
-          prompt: prompt.substring(0, 100),
-          duration: videoDuration,
-          aspectRatio: aspectRatio
-        });
-
-        const result = await sora2Service.generateVideo(
-          {
-            prompt: prompt,
-            duration: videoDuration as 5 | 10,
-            aspectRatio: aspectRatio as '16:9' | '9:16' | '1:1'
-          },
-          (progress) => {
-            setLoadingProgress(progress);
-            Animated.timing(progressAnim, {
-              toValue: progress / 100,
-              duration: 300,
-              easing: Easing.out(Easing.ease),
-              useNativeDriver: false,
-            }).start();
-          }
-        );
-
-        console.log('✅ [VIDEO] Résultat Sora-2 reçu:');
-        console.log('  - Type:', typeof result);
-        console.log('  - Clés:', Object.keys(result));
-        console.log('  - result.videoUrl:', result.videoUrl);
-        console.log('  - result.videoUrl type:', typeof result.videoUrl);
-        console.log('  - result.videoUrl length:', result.videoUrl?.length || 0);
-        console.log('  - result.videoUrl preview:', result.videoUrl?.substring(0, 100) || 'null');
-        console.log('  - result.taskId:', result.taskId);
-        console.log('  - result.duration:', result.duration);
-        console.log('  - result.source:', (result as any).source);
-        console.log('  - Objet complet:', JSON.stringify(result, null, 2));
-
-        if (!result || !result.videoUrl) {
-          console.error('❌ [VIDEO] Résultat Sora-2 invalide - pas de videoUrl');
-          console.error('❌ [VIDEO] Résultat complet:', result);
-          throw new Error('Sora-2: URL de vidéo manquante dans le résultat');
-        }
-
-        if (typeof result.videoUrl !== 'string') {
-          console.error('❌ [VIDEO] videoUrl n\'est pas une string:', typeof result.videoUrl);
-          throw new Error('Sora-2: URL de vidéo invalide');
-        }
-
-        if (!result.videoUrl.startsWith('http')) {
-          console.error('❌ [VIDEO] URL de vidéo malformée:', result.videoUrl);
-          throw new Error('Sora-2: URL de vidéo ne commence pas par http');
-        }
-
-        videoUrl = result.videoUrl;
-        console.log('✅ [VIDEO] videoUrl assigné:', videoUrl);
-      } else {
-        videoUrl = await videoService.current!.generateVideo({
-          prompt: prompt,
-          referenceImage: referenceImage || undefined,
-          model: selectedModel,
-          width: videoWidth,
-          height: videoHeight,
-          duration: videoDuration,
-          onProgress: (progress) => {
-            setLoadingProgress(progress);
-            Animated.timing(progressAnim, {
-              toValue: progress / 100,
-              duration: 300,
-              easing: Easing.out(Easing.ease),
-              useNativeDriver: false,
-            }).start();
-          },
-        });
-      }
+      const videoUrl = await videoService.current!.generateVideo({
+        prompt: prompt,
+        referenceImage: referenceImage || undefined,
+        model: selectedModel,
+        width: videoWidth,
+        height: videoHeight,
+        duration: videoDuration,
+        onProgress: (progress) => {
+          setLoadingProgress(progress);
+          Animated.timing(progressAnim, {
+            toValue: progress / 100,
+            duration: 300,
+            easing: Easing.out(Easing.ease),
+            useNativeDriver: false,
+          }).start();
+        },
+      });
 
       console.log('📹 [VIDEO] URL vidéo finale:', {
         videoUrl: videoUrl,
@@ -473,7 +394,7 @@ export default function VideoGenerator() {
       });
 
       console.log('✅ [VIDEO] Vidéo sauvegardée dans galerie');
-      console.log('🎉 [VIDEO] SUCCÈS COMPLET - Génération Sora-2 terminée');
+      console.log('🎉 [VIDEO] SUCCÈS COMPLET - Génération vidéo terminée');
 
     } catch (error) {
       console.error('❌ [VIDEO] Erreur de génération:', error);
@@ -715,33 +636,6 @@ export default function VideoGenerator() {
             ))}
           </View>
         </View>
-
-        {/* Sélection de la durée pour Max (Sora-2) */}
-        {selectedQuality.id === 'max' && selectedQuality.durationOptions && (
-          <View style={styles.inputSection}>
-            <Text style={styles.label}>Durée de la vidéo</Text>
-            <View style={styles.videoFormatsContainer}>
-              {selectedQuality.durationOptions.map((duration) => (
-                <TouchableOpacity
-                  key={duration}
-                  style={[
-                    styles.videoFormatButton,
-                    selectedDuration === duration && styles.selectedVideoFormatButton
-                  ]}
-                  onPress={() => setSelectedDuration(duration)}
-                >
-                  <Clock size={20} color={selectedDuration === duration ? '#FF6B35' : '#666666'} />
-                  <Text style={[
-                    styles.videoFormatButtonText,
-                    selectedDuration === duration && styles.selectedVideoFormatButtonText
-                  ]}>
-                    {duration}s
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        )}
 
         <TouchableOpacity 
           style={styles.advancedToggle}
